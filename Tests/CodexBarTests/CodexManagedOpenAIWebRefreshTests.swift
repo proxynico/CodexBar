@@ -55,23 +55,33 @@ struct CodexManagedOpenAIWebRefreshTests {
             await completion.markCompleted()
         }
 
-        try? await Task.sleep(for: .milliseconds(200))
+        let refreshCompleted = await completion.waitUntilCompleted(timeout: .seconds(30))
+        let backgroundTask = store.openAIDashboardBackgroundRefreshTask
 
+        #expect(refreshCompleted)
+        #expect(backgroundTask != nil)
+
+        let dashboardStarted = await blocker.waitUntilStarted(timeout: .seconds(30))
+        #expect(dashboardStarted)
         #expect(await blocker.startedCount() == 1)
-        #expect(await completion.isCompleted == true)
 
-        await blocker.resumeNext(with: .success(OpenAIDashboardSnapshot(
-            signedInEmail: managedAccount.email,
-            codeReviewRemainingPercent: 95,
-            creditEvents: [],
-            dailyBreakdown: [],
-            usageBreakdown: [],
-            creditsPurchaseURL: nil,
-            creditsRemaining: 25,
-            accountPlan: "Pro",
-            updatedAt: Date())))
+        if dashboardStarted {
+            await blocker.resumeNext(with: .success(OpenAIDashboardSnapshot(
+                signedInEmail: managedAccount.email,
+                codeReviewRemainingPercent: 95,
+                creditEvents: [],
+                dailyBreakdown: [],
+                usageBreakdown: [],
+                creditsPurchaseURL: nil,
+                creditsRemaining: 25,
+                accountPlan: "Pro",
+                updatedAt: Date())))
+        } else {
+            backgroundTask?.cancel()
+        }
 
         await refreshTask.value
+        await backgroundTask?.value
     }
 
     @Test
@@ -643,6 +653,21 @@ actor RefreshCompletionProbe {
     func markCompleted() {
         self.isCompleted = true
     }
+
+    func waitUntilCompleted(
+        timeout: Duration,
+        pollInterval: Duration = .milliseconds(20)) async -> Bool
+    {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: timeout)
+
+        while clock.now < deadline {
+            if self.isCompleted { return true }
+            try? await Task.sleep(for: pollInterval)
+        }
+
+        return self.isCompleted
+    }
 }
 
 actor BlockingManagedOpenAIDashboardLoader {
@@ -664,6 +689,22 @@ actor BlockingManagedOpenAIDashboardLoader {
         await withCheckedContinuation { continuation in
             self.startWaiters.append((count: count, continuation: continuation))
         }
+    }
+
+    func waitUntilStarted(
+        count: Int = 1,
+        timeout: Duration,
+        pollInterval: Duration = .milliseconds(20)) async -> Bool
+    {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: timeout)
+
+        while clock.now < deadline {
+            if self.started >= count { return true }
+            try? await Task.sleep(for: pollInterval)
+        }
+
+        return self.started >= count
     }
 
     func startedCount() -> Int {
@@ -708,6 +749,22 @@ actor BlockingCreditsLoader {
         await withCheckedContinuation { continuation in
             self.startWaiters.append((count: count, continuation: continuation))
         }
+    }
+
+    func waitUntilStarted(
+        count: Int = 1,
+        timeout: Duration,
+        pollInterval: Duration = .milliseconds(20)) async -> Bool
+    {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: timeout)
+
+        while clock.now < deadline {
+            if self.started >= count { return true }
+            try? await Task.sleep(for: pollInterval)
+        }
+
+        return self.started >= count
     }
 
     func startedCount() -> Int {

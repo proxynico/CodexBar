@@ -40,10 +40,10 @@ struct CodexBackgroundRefreshCoalescingTests {
             await secondCompletion.markCompleted()
         }
 
-        try? await Task.sleep(for: .milliseconds(200))
+        let secondCompleted = await secondCompletion.waitUntilCompleted(timeout: .seconds(30))
 
         #expect(await blocker.startedCount() == 1)
-        #expect(await secondCompletion.isCompleted == true)
+        #expect(secondCompleted)
 
         await blocker.resumeNext(with: .success(CreditsSnapshot(remaining: 25, events: [], updatedAt: Date())))
 
@@ -177,10 +177,10 @@ struct CodexBackgroundRefreshCoalescingTests {
             await secondCompletion.markCompleted()
         }
 
-        try? await Task.sleep(for: .milliseconds(200))
+        let secondCompleted = await secondCompletion.waitUntilCompleted(timeout: .seconds(30))
 
         #expect(await blocker.startedCount() == 1)
-        #expect(await secondCompletion.isCompleted == true)
+        #expect(secondCompleted)
 
         let backgroundTask = try #require(store.openAIDashboardBackgroundRefreshTask)
         await blocker.resumeNext(with: .success(OpenAIDashboardSnapshot(

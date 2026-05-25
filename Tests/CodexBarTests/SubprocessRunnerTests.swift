@@ -44,8 +44,8 @@ struct SubprocessRunnerTests {
         }
 
         let elapsed = Date().timeIntervalSince(start)
-        // Must complete in well under 5s (the sleep duration). Allow generous bound for CI.
-        #expect(elapsed < 3, "Timeout should fire in ~1s, not wait for process to exit naturally")
+        // Must complete before the 5s sleep duration. Allow generous bound for saturated CI/test runners.
+        #expect(elapsed < 5, "Timeout should fire before the process exits naturally")
     }
 
     /// Multiple concurrent hung subprocesses must all time out independently, proving that

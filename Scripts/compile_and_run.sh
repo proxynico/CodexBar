@@ -111,6 +111,12 @@ resolve_signing_mode() {
   fi
 
   if [[ -n "${APP_IDENTITY:-}" ]]; then
+    if [[ "${APP_IDENTITY}" == "CodexBar Development" ]]; then
+      log "WARN: APP_IDENTITY='CodexBar Development' is not usable for bundled framework library validation; falling back to adhoc signing."
+      unset APP_IDENTITY
+      SIGNING_MODE="adhoc"
+      return
+    fi
     if has_signing_identity "${APP_IDENTITY}"; then
       export_team_id_from_identity "${APP_IDENTITY}"
       SIGNING_MODE="identity"
@@ -123,8 +129,7 @@ resolve_signing_mode() {
 
   local candidate=""
   for candidate in \
-    "Developer ID Application: Peter Steinberger (Y5PE65HELJ)" \
-    "CodexBar Development"
+    "Developer ID Application: Peter Steinberger (Y5PE65HELJ)"
   do
     if has_signing_identity "${candidate}"; then
       APP_IDENTITY="${candidate}"
