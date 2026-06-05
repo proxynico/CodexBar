@@ -1,6 +1,5 @@
 # Kilo Organization Selection Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Let CodexBar users opt in to one or more Kilo organizations from Preferences → Providers → Kilo. Enabled orgs render as stacked cards alongside their personal account in the Kilo menu.
 
@@ -8,7 +7,7 @@
 
 **Tech Stack:** Swift 6, SwiftUI, Swift Testing (`@Test`), `swift build` / `swift test` / `make check`, GitHub CLI for PR.
 
-**Spec:** `docs/superpowers/specs/2026-05-11-kilo-organization-selection-design.md`
+**Spec:** `docs/archive/specs/2026-05-11-kilo-organization-selection-design.md`
 
 ---
 
@@ -1445,8 +1444,8 @@ gh pr create \
 - The Kilo menu now stacks one card per enabled scope (Personal + each chosen org), reusing the existing multi-snapshot rendering pattern.
 
 ## Design doc
-- `docs/superpowers/specs/2026-05-11-kilo-organization-selection-design.md`
-- `docs/superpowers/plans/2026-05-11-kilo-organization-selection.md`
+- `docs/archive/specs/2026-05-11-kilo-organization-selection-design.md`
+- `docs/archive/plans/2026-05-11-kilo-organization-selection.md`
 
 ## Test plan
 - [x] `swift test` passes
