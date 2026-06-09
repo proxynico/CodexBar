@@ -293,6 +293,10 @@ extension UsageStore {
     private func handleProviderFetchFailure(provider: UsageProvider, error: Error) async {
         let shouldNotifyPermissionPrompt = Self.isPermissionPromptWaiting(error)
         await MainActor.run {
+            guard let message = self.providerFetchErrorMessage(error) else {
+                self.errors[provider] = nil
+                return
+            }
             let hadPriorData = self.snapshots[provider] != nil
             let preservesPriorData = Self.shouldPreservePriorSnapshot(
                 after: error,
@@ -322,7 +326,7 @@ extension UsageStore {
                 return
             }
             if shouldSurface {
-                self.errors[provider] = error.localizedDescription
+                self.errors[provider] = message
                 if !preservesPriorData, !preservesClaudeWebSessionFailure {
                     self.snapshots.removeValue(forKey: provider)
                 }
@@ -338,6 +342,12 @@ extension UsageStore {
                 provider: provider, settings: self.settings, store: self)
             runtime.providerDidFail(context: context, provider: provider, error: error)
         }
+    }
+
+    func providerFetchErrorMessage(_ error: any Error) -> String? {
+        guard !Self.errorIsCancellation(error) else { return nil }
+        let message = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
+        return message.isEmpty ? nil : message
     }
 
     private static func shouldPreservePriorSnapshot(after error: Error, hadPriorData: Bool) -> Bool {

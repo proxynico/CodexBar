@@ -1107,7 +1107,7 @@ extension StatusMenuTests {
     }
 
     @Test
-    func `shows open AI web submenus when history exists`() throws {
+    func `shows open AI usage submenu while hiding codex credits history`() throws {
         self.disableMenuCardsForTesting()
         let settings = SettingsStore(
             configStore: testConfigStore(suiteName: "StatusMenuTests-history"),
@@ -1171,9 +1171,7 @@ extension StatusMenuTests {
         #expect(
             usageItem?.submenu?.items
                 .contains { ($0.representedObject as? String) == "usageBreakdownChart" } == true)
-        #expect(
-            creditsItem?.submenu?.items
-                .contains { ($0.representedObject as? String) == "creditsHistoryChart" } == true)
+        #expect(creditsItem == nil)
     }
 
     @Test
@@ -1230,7 +1228,7 @@ extension StatusMenuTests {
     }
 
     @Test
-    func `shows credits before cost in codex menu card sections`() throws {
+    func `hides codex credits and buy credits while preserving cost sections`() {
         self.disableMenuCardsForTesting()
         let settings = self.makeSettings()
         settings.statusChecksEnabled = false
@@ -1292,11 +1290,9 @@ extension StatusMenuTests {
         let menu = controller.makeMenu()
         controller.menuWillOpen(menu)
         let ids = menu.items.compactMap { $0.representedObject as? String }
-        let creditsIndex = ids.firstIndex(of: "menuCardCredits")
-        let costIndex = ids.firstIndex(of: "menuCardCost")
-        #expect(creditsIndex != nil)
-        #expect(costIndex != nil)
-        #expect(try #require(creditsIndex) < costIndex!)
+        #expect(ids.contains("menuCardCredits") == false)
+        #expect(ids.contains("menuCardCost"))
+        #expect(menu.items.contains { $0.title == "Buy Credits..." } == false)
     }
 
     @Test

@@ -1172,10 +1172,7 @@ extension StatusMenuTests {
 
         await self.closeMenuAndWaitUntilFresh(controller, menu: menu, key: key)
 
-        let creditsItem = try #require(self.menuItem(in: menu, id: "menuCardCredits"))
-        #expect(
-            creditsItem.submenu?.items.first?.representedObject as? String ==
-                StatusItemController.creditsHistoryChartID)
+        #expect(self.menuItem(in: menu, id: "menuCardCredits") == nil)
         #expect(controller.menuVersions[key] == controller.menuContentVersion)
     }
 
@@ -1213,7 +1210,7 @@ extension StatusMenuTests {
         controller.menuRefreshEnabledOverrideForTesting = true
 
         let openedVersion = try #require(controller.menuVersions[key])
-        _ = try #require(self.menuItem(in: menu, id: "menuCardCredits"))
+        #expect(self.menuItem(in: menu, id: "menuCardCredits") == nil)
 
         store.openAIDashboard = self.makeOpenAIDashboard(
             dailyBreakdown: [
@@ -1228,9 +1225,7 @@ extension StatusMenuTests {
 
         await self.closeMenuAndWaitUntilFresh(controller, menu: menu, key: key)
 
-        let creditsItem = try #require(self.menuItem(in: menu, id: "menuCardCredits"))
-        #expect(creditsItem.submenu?.items.first?.representedObject as? String == StatusItemController
-            .creditsHistoryChartID)
+        #expect(self.menuItem(in: menu, id: "menuCardCredits") == nil)
     }
 
     @Test

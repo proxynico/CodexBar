@@ -215,7 +215,7 @@ extension UsageStore {
         return false
     }
 
-    private static func errorIsCancellation(_ error: any Error) -> Bool {
+    static func errorIsCancellation(_ error: any Error) -> Bool {
         if error is CancellationError {
             return true
         }
@@ -227,6 +227,7 @@ extension UsageStore {
             .lowercased()
         return message == "cancelled" ||
             message.contains("cancellationerror") ||
+            message.contains("nsurlerrordomain error -999") ||
             message.contains("cancelled")
     }
 

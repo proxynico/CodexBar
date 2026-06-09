@@ -5,7 +5,7 @@ import Testing
 
 struct MenuCardOptionalUsageModelTests {
     @Test
-    func `hides codex credits when disabled`() throws {
+    func `hides codex credits even when optional usage is enabled`() throws {
         let now = Date()
         let identity = ProviderIdentitySnapshot(
             providerID: .codex,
@@ -50,7 +50,7 @@ struct MenuCardOptionalUsageModelTests {
             usageBarsShowUsed: false,
             resetTimeDisplayStyle: .countdown,
             tokenCostUsageEnabled: false,
-            showOptionalCreditsAndExtraUsage: false,
+            showOptionalCreditsAndExtraUsage: true,
             hidePersonalInfo: false,
             now: now))
 

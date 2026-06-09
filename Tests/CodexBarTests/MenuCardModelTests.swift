@@ -829,7 +829,7 @@ struct MenuCardModelTests {
     }
 
     @Test
-    func `claude model includes routines bar when present`() throws {
+    func `claude model hides routines bar when present`() throws {
         let now = Date()
         let identity = ProviderIdentitySnapshot(
             providerID: .claude,
@@ -885,7 +885,8 @@ struct MenuCardModelTests {
             hidePersonalInfo: false,
             now: now))
 
-        #expect(model.metrics.map(\.title) == ["Session", "Weekly", "Sonnet", "Daily Routines"])
+        #expect(model.metrics.map(\.title) == ["Session", "Weekly", "Sonnet"])
+        #expect(model.metrics.map(\.id).contains("claude-routines") == false)
     }
 
     @Test

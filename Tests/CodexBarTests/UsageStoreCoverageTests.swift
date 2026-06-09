@@ -452,6 +452,24 @@ struct UsageStoreCoverageTests {
     }
 
     @Test
+    func `provider refresh ignores cancelled failures`() async throws {
+        let settings = Self.makeSettingsStore(suite: "UsageStoreCoverageTests-provider-cancel")
+        try Self.enableOnly(.cursor, settings: settings)
+        let store = Self.makeUsageStore(settings: settings)
+        let baseSpec = try #require(store.providerSpecs[.cursor])
+        store.providerSpecs[.cursor] = Self.makeThrowingProviderSpec(
+            provider: .cursor,
+            baseSpec: baseSpec,
+            error: URLError(.cancelled))
+
+        await store.refreshProvider(.cursor, allowDisabled: true)
+
+        #expect(store.errors[.cursor] == nil)
+        #expect(store.snapshots[.cursor] == nil)
+        #expect(store.providerFetchErrorMessage(CodexOAuthFetchError.networkError(URLError(.cancelled))) == nil)
+    }
+
+    @Test
     func `isPreservableNetworkTransportError classifies transport failures correctly`() {
         #expect(UsageStore.isPreservableNetworkTransportError(
             NSError(domain: NSURLErrorDomain, code: NSURLErrorCannotFindHost)))
@@ -603,6 +621,53 @@ struct UsageStoreCoverageTests {
                 metadata: #require(metadata[provider]),
                 enabled: provider == enabledProvider)
         }
+    }
+
+    private static func makeThrowingProviderSpec(
+        provider: UsageProvider,
+        baseSpec: ProviderSpec,
+        error: any Error) -> ProviderSpec
+    {
+        let baseDescriptor = baseSpec.descriptor
+        let strategy = ThrowingUsageStoreCoverageFetchStrategy(error: error)
+        let descriptor = ProviderDescriptor(
+            id: provider,
+            metadata: baseDescriptor.metadata,
+            branding: baseDescriptor.branding,
+            tokenCost: baseDescriptor.tokenCost,
+            fetchPlan: ProviderFetchPlan(
+                sourceModes: [.auto, .cli],
+                pipeline: ProviderFetchPipeline { _ in [strategy] }),
+            cli: baseDescriptor.cli)
+        return ProviderSpec(
+            style: baseSpec.style,
+            isEnabled: baseSpec.isEnabled,
+            descriptor: descriptor,
+            makeFetchContext: baseSpec.makeFetchContext)
+    }
+}
+
+private struct ThrowingUsageStoreCoverageFetchStrategy: ProviderFetchStrategy {
+    let error: any Error
+
+    var id: String {
+        "usage-store-coverage-throwing"
+    }
+
+    var kind: ProviderFetchKind {
+        .cli
+    }
+
+    func isAvailable(_: ProviderFetchContext) async -> Bool {
+        true
+    }
+
+    func fetch(_: ProviderFetchContext) async throws -> ProviderFetchResult {
+        throw self.error
+    }
+
+    func shouldFallback(on _: Error, context _: ProviderFetchContext) -> Bool {
+        false
     }
 }
 
