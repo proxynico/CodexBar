@@ -951,6 +951,25 @@ extension ClaudeUsageFetcher {
             usage.extraUsage,
             loginMethod: loginMethod,
             treatAsSpendLimit: treatAsSpendLimit)
+        let extraRateWindows = Self.oauthExtraRateWindows(from: usage)
+
+        if let exhaustedSpendLimit = Self.exhaustedExtraUsageCapWindow(
+            from: providerCost,
+            utilization: usage.extraUsage?.utilization)
+        {
+            return ClaudeUsageSnapshot(
+                primary: exhaustedSpendLimit,
+                primaryWindowKind: .spendLimit,
+                secondary: nil,
+                opus: nil,
+                extraRateWindows: extraRateWindows,
+                providerCost: providerCost,
+                updatedAt: Date(),
+                accountEmail: nil,
+                accountOrganization: nil,
+                loginMethod: loginMethod,
+                rawText: nil)
+        }
 
         guard let primary else {
             if let spendLimit = Self.oauthSpendLimitWindow(from: providerCost, extraUsage: usage.extraUsage) {
@@ -959,7 +978,7 @@ extension ClaudeUsageFetcher {
                     primaryWindowKind: .spendLimit,
                     secondary: nil,
                     opus: nil,
-                    extraRateWindows: Self.oauthExtraRateWindows(from: usage),
+                    extraRateWindows: extraRateWindows,
                     providerCost: providerCost,
                     updatedAt: Date(),
                     accountEmail: nil,
@@ -974,7 +993,6 @@ extension ClaudeUsageFetcher {
         let modelSpecific = makeWindow(
             usage.sevenDaySonnet ?? usage.sevenDayOpus,
             windowMinutes: 7 * 24 * 60)
-        let extraRateWindows = Self.oauthExtraRateWindows(from: usage)
 
         return ClaudeUsageSnapshot(
             primary: primary,
@@ -1018,10 +1036,30 @@ extension ClaudeUsageFetcher {
         from providerCost: ProviderCostSnapshot?,
         extraUsage: OAuthExtraUsage?) -> RateWindow?
     {
+        self.extraUsageCapWindow(from: providerCost, utilization: extraUsage?.utilization)
+    }
+
+    private static func exhaustedExtraUsageCapWindow(
+        from providerCost: ProviderCostSnapshot?,
+        utilization: Double?) -> RateWindow?
+    {
         guard let providerCost,
               providerCost.limit > 0
         else { return nil }
-        let usedPercent = extraUsage?.utilization ?? (providerCost.used / providerCost.limit) * 100
+        let calculatedPercent = (providerCost.used / providerCost.limit) * 100
+        let rawPercent = utilization ?? calculatedPercent
+        guard rawPercent >= 100 || providerCost.used >= providerCost.limit else { return nil }
+        return self.extraUsageCapWindow(from: providerCost, utilization: utilization)
+    }
+
+    private static func extraUsageCapWindow(
+        from providerCost: ProviderCostSnapshot?,
+        utilization: Double?) -> RateWindow?
+    {
+        guard let providerCost,
+              providerCost.limit > 0
+        else { return nil }
+        let usedPercent = utilization ?? (providerCost.used / providerCost.limit) * 100
         let used = UsageFormatter.currencyString(providerCost.used, currencyCode: providerCost.currencyCode)
         let limit = UsageFormatter.currencyString(providerCost.limit, currencyCode: providerCost.currencyCode)
         return RateWindow(
@@ -1102,6 +1140,24 @@ extension ClaudeUsageFetcher {
                 }
             }
         // Convert web API data to ClaudeUsageSnapshot format
+        if let exhaustedSpendLimit = Self.exhaustedExtraUsageCapWindow(
+            from: webData.extraUsageCost,
+            utilization: nil)
+        {
+            return ClaudeUsageSnapshot(
+                primary: exhaustedSpendLimit,
+                primaryWindowKind: .spendLimit,
+                secondary: nil,
+                opus: nil,
+                extraRateWindows: webData.extraRateWindows,
+                providerCost: webData.extraUsageCost,
+                updatedAt: Date(),
+                accountEmail: webData.accountEmail,
+                accountOrganization: webData.accountOrganization,
+                loginMethod: webData.loginMethod,
+                rawText: nil)
+        }
+
         let primary = RateWindow(
             usedPercent: webData.sessionPercentUsed,
             windowMinutes: 5 * 60,
@@ -1245,6 +1301,23 @@ extension ClaudeUsageFetcher {
             let mergedExtraRateWindows = snapshot.extraRateWindows.isEmpty ? webData.extraRateWindows : snapshot
                 .extraRateWindows
             let mergedProviderCost = snapshot.providerCost ?? webData.extraUsageCost
+            if let exhaustedSpendLimit = Self.exhaustedExtraUsageCapWindow(
+                from: mergedProviderCost,
+                utilization: nil)
+            {
+                return ClaudeUsageSnapshot(
+                    primary: exhaustedSpendLimit,
+                    primaryWindowKind: .spendLimit,
+                    secondary: nil,
+                    opus: nil,
+                    extraRateWindows: mergedExtraRateWindows,
+                    providerCost: mergedProviderCost,
+                    updatedAt: snapshot.updatedAt,
+                    accountEmail: snapshot.accountEmail,
+                    accountOrganization: snapshot.accountOrganization,
+                    loginMethod: snapshot.loginMethod,
+                    rawText: snapshot.rawText)
+            }
             if mergedProviderCost != snapshot.providerCost || mergedExtraRateWindows != snapshot.extraRateWindows {
                 return ClaudeUsageSnapshot(
                     primary: snapshot.primary,

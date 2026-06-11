@@ -914,6 +914,42 @@ struct ClaudeOAuthUsageMappingTests {
     }
 
     @Test
+    func `oauth enterprise spend limit over cap overrides normal usage window`() throws {
+        let json = """
+        {
+          "five_hour": { "utilization": 90, "resets_at": "2025-12-23T16:00:00.000Z" },
+          "seven_day": { "utilization": 30, "resets_at": "2025-12-29T23:00:00.000Z" },
+          "extra_usage": {
+            "is_enabled": true,
+            "monthly_limit": 600,
+            "used_credits": 660,
+            "utilization": 110,
+            "currency": "USD"
+          }
+        }
+        """
+        let claude = try ClaudeUsageFetcher._mapOAuthUsageForTesting(
+            Data(json.utf8),
+            subscriptionType: "enterprise")
+        let snapshot = ClaudeOAuthFetchStrategy._snapshotForTesting(from: claude)
+
+        #expect(claude.primaryWindowKind == .spendLimit)
+        #expect(claude.primary.usedPercent == 100)
+        #expect(snapshot.primary == nil)
+        #expect(snapshot.secondary == nil)
+        #expect(snapshot.tertiary == nil)
+        #expect(snapshot.providerCost?.period == "Spend limit")
+        #expect(snapshot.providerCost?.used == 6.60)
+        #expect(snapshot.providerCost?.limit == 6.00)
+        let menuWindow = MenuBarMetricWindowResolver.rateWindow(
+            preference: .automatic,
+            provider: .claude,
+            snapshot: snapshot,
+            supportsAverage: false)
+        #expect(menuWindow?.usedPercent == 100)
+    }
+
+    @Test
     func `oauth usage throws when no usable windows are present`() {
         let json = "{}"
 
