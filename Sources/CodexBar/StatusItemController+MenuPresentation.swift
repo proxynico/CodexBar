@@ -82,8 +82,9 @@ final class MenuHostingView<Content: View>: NSHostingView<Content> {
 
 @MainActor
 final class MenuCardItemHostingView<Content: View>: NSHostingView<Content>, MenuCardHighlighting, MenuCardMeasuring {
-    private let highlightState: MenuCardHighlightState
-    private let onClick: (() -> Void)?
+    let highlightState: MenuCardHighlightState
+    private var onClick: (() -> Void)?
+    private var hasClickRecognizer = false
 
     override var allowsVibrancy: Bool {
         true
@@ -100,10 +101,27 @@ final class MenuCardItemHostingView<Content: View>: NSHostingView<Content>, Menu
         self.onClick = onClick
         super.init(rootView: rootView)
         if onClick != nil {
-            let recognizer = NSClickGestureRecognizer(target: self, action: #selector(self.handlePrimaryClick(_:)))
-            recognizer.buttonMask = 0x1
-            self.addGestureRecognizer(recognizer)
+            self.installClickRecognizer()
         }
+    }
+
+    /// Reuses this hosting view for a rebuilt card with the same identity: the replaced
+    /// `rootView` is diffed in place by SwiftUI instead of tearing down and recreating the
+    /// hosting view and its graph. Callers must construct `rootView` around this view's own
+    /// `highlightState` so menu hover highlighting keeps driving the rendered content.
+    func prepareForReuse(rootView: Content, onClick: (() -> Void)?) {
+        self.rootView = rootView
+        self.onClick = onClick
+        if onClick != nil, !self.hasClickRecognizer {
+            self.installClickRecognizer()
+        }
+    }
+
+    private func installClickRecognizer() {
+        let recognizer = NSClickGestureRecognizer(target: self, action: #selector(self.handlePrimaryClick(_:)))
+        recognizer.buttonMask = 0x1
+        self.addGestureRecognizer(recognizer)
+        self.hasClickRecognizer = true
     }
 
     required init(rootView: Content) {
@@ -127,9 +145,9 @@ final class MenuCardItemHostingView<Content: View>: NSHostingView<Content>, Menu
     }
 
     func measuredHeight(width: CGFloat) -> CGFloat {
-        let controller = NSHostingController(rootView: self.rootView)
-        let measured = controller.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude))
-        return measured.height
+        self.frame = NSRect(origin: self.frame.origin, size: NSSize(width: width, height: 1))
+        self.layoutSubtreeIfNeeded()
+        return self.fittingSize.height
     }
 
     func setHighlighted(_ highlighted: Bool) {

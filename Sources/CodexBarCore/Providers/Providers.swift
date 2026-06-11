@@ -55,7 +55,7 @@ public enum UsageProvider: String, CaseIterable, Sendable, Codable {
 
 // swiftformat:enable sortDeclarations
 
-public enum IconStyle: Sendable, CaseIterable {
+public enum IconStyle: String, Sendable, CaseIterable {
     case codex
     case openai
     case claude
@@ -216,6 +216,17 @@ public enum ProviderBrowserCookieDefaults {
     public static var grokCookieImportOrder: BrowserCookieImportOrder? {
         #if os(macOS)
         [.chrome]
+        #else
+        nil
+        #endif
+    }
+
+    /// MiMo Auto: Safari first (no Keychain prompt), keep the existing Chrome-family
+    /// entries from main, and add Firefox/Edge per #1304. Other Chromium forks stay on
+    /// Manual import to avoid scanning the full SweetCookieKit default order.
+    public static var mimoCookieImportOrder: BrowserCookieImportOrder? {
+        #if os(macOS)
+        [.safari, .chrome, .chromeBeta, .chromeCanary, .firefox, .edge]
         #else
         nil
         #endif

@@ -632,9 +632,9 @@ struct MenuCardModelCodexProjectionTests {
                     id: "codex-spark",
                     title: "Codex Spark 5-hour",
                     window: RateWindow(
-                        usedPercent: 30,
+                        usedPercent: 80,
                         windowMinutes: 300,
-                        resetsAt: now.addingTimeInterval(60 * 60),
+                        resetsAt: now.addingTimeInterval(2 * 60 * 60),
                         resetDescription: nil)),
                 NamedRateWindow(
                     id: "codex-spark-weekly",

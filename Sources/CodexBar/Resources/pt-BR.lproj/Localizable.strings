@@ -399,6 +399,11 @@
 "language_chinese_simplified" = "Chinês simplificado";
 "language_chinese_traditional" = "Chinês tradicional";
 "language_portuguese_brazilian" = "Português (Brasil)";
+"language_swedish" = "Sueco";
+"language_dutch" = "Nederlands";
+"language_french" = "Francês";
+"language_ukrainian" = "Ucraniano";
+"language_japanese" = "Japonês";
 "start_at_login_title" = "Iniciar ao fazer login";
 "start_at_login_subtitle" = "Abre o CodexBar automaticamente ao iniciar o Mac.";
 "show_cost_summary" = "Mostrar resumo de custos";
@@ -904,7 +909,7 @@
 "Antigravity login failed" = "Falha no login do Antigravity";
 "Antigravity login timed out" = "Tempo esgotado no login do Antigravity";
 "Auth source" = "Fonte de autenticação";
-"Automatic imports Chrome browser cookies from Xiaomi MiMo." = "Importa automaticamente cookies do Chrome do Xiaomi MiMo.";
+"Automatic imports browser cookies from Xiaomi MiMo." = "Importa automaticamente cookies do navegador do Xiaomi MiMo.";
 "Automatic imports Windsurf session data from Chromium browser localStorage." = "Importa automaticamente dados de sessão do Windsurf do localStorage do Chromium.";
 "Automatic imports browser cookies from Bailian." = "Importa automaticamente cookies do navegador do Bailian.";
 "Automatically imports browser cookies." = "Importa automaticamente cookies do navegador.";
@@ -1004,6 +1009,7 @@
 "Personal account" = "Conta pessoal";
 "Project ID" = "ID do projeto";
 "Re-auth" = "Reautenticar";
+"Re-login at claude.ai" = "Entrar novamente no claude.ai";
 "Re-authenticating…" = "Reautenticando…";
 "Refresh Session" = "Atualizar sessão";
 "Refresh organizations" = "Atualizar organizações";
@@ -1059,3 +1065,5 @@
 "Clear" = "Limpar";
 "No matching providers" = "Nenhum provedor correspondente";
 "Search providers" = "Buscar provedores";
+
+"language_vietnamese" = "Vietnamita";

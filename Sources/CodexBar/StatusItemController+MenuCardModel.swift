@@ -85,6 +85,10 @@ extension StatusItemController {
                 self.store.weeklyPace(provider: target, window: window, now: now)
             }
         }
+        let fallbackAccount = accountOverride
+            ?? (metadata.usesAccountFallback
+                ? self.store.accountInfo(for: target)
+                : AccountInfo(email: nil, plan: nil))
         let input = UsageMenuCardView.Model.Input(
             provider: target,
             metadata: metadata,
@@ -96,8 +100,8 @@ extension StatusItemController {
             dashboardError: dashboardError,
             tokenSnapshot: tokenSnapshot,
             tokenError: tokenError,
-            account: accountOverride ?? self.store.accountInfo(for: target),
-            isRefreshing: self.store.shouldShowRefreshingMenuCard(for: target),
+            account: fallbackAccount,
+            isRefreshing: self.store.shouldShowRefreshingMenuCardIndicator(for: target),
             lastError: errorOverride
                 ?? codexProjection?.userFacingErrors.usage
                 ?? self.store.userFacingError(for: target),

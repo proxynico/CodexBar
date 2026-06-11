@@ -11,6 +11,11 @@ enum AppLanguage: String, CaseIterable, Identifiable {
     case chineseTraditional = "zh-Hant"
     case portugueseBrazilian = "pt-BR"
     case swedish = "sv"
+    case french = "fr"
+    case dutch = "nl"
+    case ukrainian = "uk"
+    case vietnamese = "vi"
+    case japanese = "ja"
 
     var id: String {
         self.rawValue
@@ -26,6 +31,11 @@ enum AppLanguage: String, CaseIterable, Identifiable {
         case .chineseTraditional: L("language_chinese_traditional")
         case .portugueseBrazilian: L("language_portuguese_brazilian")
         case .swedish: L("language_swedish")
+        case .french: L("language_french")
+        case .dutch: L("language_dutch")
+        case .ukrainian: L("language_ukrainian")
+        case .vietnamese: L("language_vietnamese")
+        case .japanese: L("language_japanese")
         }
     }
 }
@@ -64,6 +74,26 @@ struct GeneralPane: View {
                             .pickerStyle(.menu)
                             .frame(maxWidth: 200)
                         }
+                    }
+
+                    HStack(alignment: .top, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(L("terminal_app_title"))
+                                .font(.body)
+                            Text(L("terminal_app_subtitle"))
+                                .font(.footnote)
+                                .foregroundStyle(.tertiary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer()
+                        Picker(L("terminal_app_title"), selection: self.$settings.terminalApp) {
+                            ForEach(TerminalApp.allCases) { option in
+                                Text(option.label).tag(option)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .frame(maxWidth: 200)
                     }
 
                     PreferenceToggleRow(

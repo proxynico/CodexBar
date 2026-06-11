@@ -29,6 +29,13 @@ extension UsageMenuCardView.Model {
             self.placeholder != nil
     }
 
+    var usesStackedDetailLayout: Bool {
+        !self.metrics.isEmpty ||
+            self.creditsText != nil ||
+            self.providerCost != nil ||
+            self.tokenUsage != nil
+    }
+
     static func progressColor(for provider: UsageProvider) -> Color {
         if provider == .elevenlabs {
             return Color(nsColor: .labelColor)
@@ -52,7 +59,7 @@ extension UsageMenuCardView.Model {
         }
 
         if input.snapshot == nil, !input.isRefreshing, input.lastError == nil {
-            return L("No usage yet")
+            return self.hasLocalCodexTokenUsage(input) ? nil : L("No usage yet")
         }
 
         return nil
@@ -68,6 +75,12 @@ extension UsageMenuCardView.Model {
             return nil
         }
         return lastError
+    }
+
+    private static func hasLocalCodexTokenUsage(_ input: Input) -> Bool {
+        input.provider == .codex &&
+            input.tokenCostUsageEnabled &&
+            self.tokenUsageSnapshot(input: input) != nil
     }
 
     private static func shouldShowRateLimitsUnavailablePlaceholder(input: Input, lastError: String? = nil) -> Bool {
@@ -133,6 +146,25 @@ extension UsageMenuCardView.Model {
             paceOnTop: paceOnTop)
     }
 
+    static func cursorBillingCyclePaceDetail(
+        window: RateWindow,
+        input: Input,
+        pace: UsagePace? = nil) -> PaceDetail?
+    {
+        guard input.provider == .cursor,
+              window.windowMinutes != nil
+        else { return nil }
+        let resolved = pace ?? UsagePace.weekly(window: window, now: input.now, defaultWindowMinutes: 10080)
+        guard let resolved,
+              resolved.expectedUsedPercent >= 3
+        else { return nil }
+        return Self.weeklyPaceDetail(
+            window: window,
+            now: input.now,
+            pace: resolved,
+            showUsed: input.usageBarsShowUsed)
+    }
+
     static func antigravityMetrics(input: Input, snapshot: UsageSnapshot) -> [Metric] {
         let percentStyle: PercentStyle = input.usageBarsShowUsed ? .used : .left
         var metrics = [
@@ -180,7 +212,11 @@ extension UsageMenuCardView.Model {
             extraRateWindows
         }
         return visibleExtraRateWindows.map { namedWindow in
-            Metric(
+            let paceDetail = Self.extraRateWindowPaceDetail(
+                provider: input.provider,
+                window: namedWindow.window,
+                input: input)
+            return Metric(
                 id: namedWindow.id,
                 title: namedWindow.title,
                 percent: Self.clamped(
@@ -193,10 +229,36 @@ extension UsageMenuCardView.Model {
                     style: input.resetTimeDisplayStyle,
                     now: input.now),
                 detailText: nil,
-                detailLeftText: nil,
-                detailRightText: nil,
-                pacePercent: nil,
-                paceOnTop: true)
+                detailLeftText: paceDetail?.leftLabel,
+                detailRightText: paceDetail?.rightLabel,
+                pacePercent: paceDetail?.pacePercent,
+                paceOnTop: paceDetail?.paceOnTop ?? true)
+        }
+    }
+
+    private static func extraRateWindowPaceDetail(
+        provider: UsageProvider,
+        window: RateWindow,
+        input: Input) -> PaceDetail?
+    {
+        guard provider == .codex else { return nil }
+        switch window.windowMinutes {
+        case 300:
+            return self.sessionPaceDetail(
+                provider: provider,
+                window: window,
+                now: input.now,
+                showUsed: input.usageBarsShowUsed)
+        case 10080:
+            let pace = UsagePace.weekly(window: window, now: input.now, defaultWindowMinutes: 10080)
+                .flatMap { $0.expectedUsedPercent >= 3 ? $0 : nil }
+            return Self.weeklyPaceDetail(
+                window: window,
+                now: input.now,
+                pace: pace,
+                showUsed: input.usageBarsShowUsed)
+        default:
+            return nil
         }
     }
 

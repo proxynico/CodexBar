@@ -20,11 +20,12 @@ extension StatusItemController {
         }
     }
 
-    func makeMenuCardItem(
-        _ view: some View,
+    func makeMenuCardItem<CardContent: View>(
+        _ view: CardContent,
         id: String,
         width: CGFloat,
         heightCacheScope: String? = nil,
+        heightCacheFingerprint: String? = nil,
         submenu: NSMenu? = nil,
         submenuIndicatorAlignment: Alignment = .topTrailing,
         submenuIndicatorTopPadding: CGFloat = 8,
@@ -42,17 +43,39 @@ extension StatusItemController {
             return item
         }
 
-        let highlightState = MenuCardHighlightState()
-        let wrapped = MenuCardSectionContainerView(
-            highlightState: highlightState,
-            showsSubmenuIndicator: submenu != nil,
-            submenuIndicatorAlignment: submenuIndicatorAlignment,
-            submenuIndicatorTopPadding: submenuIndicatorTopPadding)
+        let hosting: MenuCardItemHostingView<MenuCardSectionContainerView<CardContent>>
+        if let recycled = self.takeRecyclableMenuCardView(
+            for: id,
+            as: MenuCardItemHostingView<MenuCardSectionContainerView<CardContent>>.self)
         {
-            view
+            let wrapped = MenuCardSectionContainerView(
+                highlightState: recycled.highlightState,
+                showsSubmenuIndicator: submenu != nil,
+                submenuIndicatorAlignment: submenuIndicatorAlignment,
+                submenuIndicatorTopPadding: submenuIndicatorTopPadding)
+            {
+                view
+            }
+            recycled.prepareForReuse(rootView: wrapped, onClick: onClick)
+            hosting = recycled
+        } else {
+            let highlightState = MenuCardHighlightState()
+            let wrapped = MenuCardSectionContainerView(
+                highlightState: highlightState,
+                showsSubmenuIndicator: submenu != nil,
+                submenuIndicatorAlignment: submenuIndicatorAlignment,
+                submenuIndicatorTopPadding: submenuIndicatorTopPadding)
+            {
+                view
+            }
+            hosting = MenuCardItemHostingView(rootView: wrapped, highlightState: highlightState, onClick: onClick)
         }
-        let hosting = MenuCardItemHostingView(rootView: wrapped, highlightState: highlightState, onClick: onClick)
-        let height = self.cachedMenuCardHeight(for: id, scope: heightCacheScope ?? id, width: width) {
+        let height = self.cachedMenuCardHeight(
+            for: id,
+            scope: heightCacheScope ?? id,
+            width: width,
+            fingerprint: heightCacheFingerprint)
+        {
             self.menuCardHeight(for: hosting, width: width)
         }
         hosting.frame = NSRect(origin: .zero, size: NSSize(width: width, height: height))
