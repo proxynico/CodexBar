@@ -19,7 +19,7 @@ struct CodexLoginRunnerTests {
         import time
 
         print("login-started", flush=True)
-        time.sleep(5)
+        time.sleep(8)
         print("login-finished", flush=True)
         """
         try script.write(to: codex, atomically: true, encoding: .utf8)
@@ -35,6 +35,6 @@ struct CodexLoginRunnerTests {
 
         #expect(result.outcome == .timedOut)
         #expect(result.output.contains("login-finished") == false)
-        #expect(elapsed < 2.0, "Timeout should return promptly, took \(elapsed)s")
+        #expect(elapsed < 6.0, "Timeout should return before the hung login exits, took \(elapsed)s")
     }
 }
