@@ -788,6 +788,22 @@ enum IconRenderer {
         return Int((clamped * 10).rounded())
     }
 
+    /// Render/observation signature buckets that match the icon cache-key granularity,
+    /// so a signature changes only when the *rendered* image actually would. This avoids
+    /// spurious re-renders from sub-bucket drift — most notably Codex's continuous credits
+    /// projection, which otherwise mutates the signature on nearly every refresh tick and
+    /// forces a full `makeIcon` for a byte-identical image. `nil` is kept as "nil" so the
+    /// signatures stay stable and distinguishable from any real bucket (always >= 0).
+    static func iconSignaturePercentBucket(_ value: Double?) -> String {
+        guard value != nil else { return "nil" }
+        return String(self.quantizedPercent(value))
+    }
+
+    static func iconSignatureCreditsBucket(_ value: Double?) -> String {
+        guard value != nil else { return "nil" }
+        return String(self.quantizedCredits(value))
+    }
+
     private static let styleKeyLookup: [IconStyle: Int] = {
         var lookup: [IconStyle: Int] = [:]
         for (index, style) in IconStyle.allCases.enumerated() {
