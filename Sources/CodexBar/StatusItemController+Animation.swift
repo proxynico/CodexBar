@@ -244,6 +244,7 @@ extension StatusItemController {
         let showUsed = self.settings.usageBarsShowUsed
         let showBrandPercent = self.settings.menuBarShowsBrandIconWithPercent
         let primaryProvider = self.primaryProviderForUnifiedIcon()
+        let resolverStyle = self.store.style(for: primaryProvider)
         let snapshot = self.store.snapshot(for: primaryProvider)
         let warningFlash = self.quotaWarningFlashActive(provider: primaryProvider)
 
@@ -252,28 +253,13 @@ extension StatusItemController {
         let resolved = snapshot.map {
             IconRemainingResolver.resolvedPercents(
                 snapshot: $0,
-                style: style,
-                showUsed: showUsed)
+                style: resolverStyle,
+                showUsed: showUsed,
+                renderingStyle: style,
+                secondaryOverrideWindowID: self.settings.copilotIconSecondaryWindowOverrideID(snapshot: $0))
         }
         var primary = resolved?.primary
         var weekly = resolved?.secondary
-        if showUsed,
-           primaryProvider == .warp,
-           let remaining = snapshot?.secondary?.remainingPercent,
-           remaining <= 0
-        {
-            // Preserve Warp "no bonus/exhausted bonus" layout even in show-used mode.
-            weekly = 0
-        }
-        if showUsed,
-           primaryProvider == .warp,
-           let remaining = snapshot?.secondary?.remainingPercent,
-           remaining > 0,
-           weekly == 0
-        {
-            // In show-used mode, `0` means "unused", not "missing". Keep the weekly lane present.
-            weekly = Self.loadingPercentEpsilon
-        }
         var credits = self.menuBarCreditsRemainingForIcon(provider: primaryProvider, snapshot: snapshot)
         var stale = self.store.isStale(provider: primaryProvider)
         var morphProgress: Double?
@@ -307,13 +293,7 @@ extension StatusItemController {
         let tilt: CGFloat =
             style == .combined ? 0 : self.tiltAmount(for: primaryProvider) * .pi / 28
 
-        let statusIndicator: ProviderStatusIndicator = {
-            for provider in self.store.enabledProvidersForDisplay() {
-                let indicator = self.store.statusIndicator(for: provider)
-                if indicator.hasIssue { return indicator }
-            }
-            return .none
-        }()
+        let statusIndicator = self.store.statusIndicator(for: primaryProvider)
         if showBrandPercent,
            let brand = ProviderBrandIcon.image(for: primaryProvider)
         {
@@ -330,6 +310,7 @@ extension StatusItemController {
                 "text=\(displayText ?? "nil")",
                 "warningFlash=\(warningFlash ? "1" : "0")",
                 "anim=\(needsAnimation ? "1" : "0")",
+                "hideCritters=\(self.settings.menuBarHidesCritters ? "1" : "0")",
             ].joined(separator: "|")
             if self.shouldSkipMergedIconRender(signature) {
                 // AppKit can lose button title/image-position state independently of the cached render signature.
@@ -355,12 +336,16 @@ extension StatusItemController {
                 "status=\(statusIndicator.rawValue)",
                 "warningFlash=\(warningFlash ? "1" : "0")",
                 "anim=\(needsAnimation ? "1" : "0")",
+                "hideCritters=\(self.settings.menuBarHidesCritters ? "1" : "0")",
             ].joined(separator: "|")
             if self.shouldSkipMergedIconRender(signature) {
                 self.noteIconPerfRender(skipped: true)
                 return true
             }
-            let image = IconRenderer.makeMorphIcon(progress: morphProgress, style: style)
+            let image = IconRenderer.makeMorphIcon(
+                progress: morphProgress,
+                style: style,
+                hideCritters: self.settings.menuBarHidesCritters)
             self.setButtonImage(
                 warningFlash ? Self.quotaWarningFlashImage(base: image) : image, for: button)
         } else {
@@ -378,6 +363,7 @@ extension StatusItemController {
                 "tilt=\(Self.iconSignatureValue(Double(tilt)))",
                 "warningFlash=\(warningFlash ? "1" : "0")",
                 "anim=\(needsAnimation ? "1" : "0")",
+                "hideCritters=\(self.settings.menuBarHidesCritters ? "1" : "0")",
             ].joined(separator: "|")
             if self.shouldSkipMergedIconRender(signature) {
                 self.noteIconPerfRender(skipped: true)
@@ -392,7 +378,8 @@ extension StatusItemController {
                 blink: blink,
                 wiggle: wiggle,
                 tilt: tilt,
-                statusIndicator: statusIndicator)
+                statusIndicator: statusIndicator,
+                hideCritters: self.settings.menuBarHidesCritters)
             self.setButtonImage(
                 warningFlash ? Self.quotaWarningFlashImage(base: image) : image, for: button)
         }
@@ -479,27 +466,11 @@ extension StatusItemController {
             IconRemainingResolver.resolvedPercents(
                 snapshot: $0,
                 style: style,
-                showUsed: showUsed)
+                showUsed: showUsed,
+                secondaryOverrideWindowID: self.settings.copilotIconSecondaryWindowOverrideID(snapshot: $0))
         }
         var primary = resolved?.primary
         var weekly = resolved?.secondary
-        if showUsed,
-           provider == .warp,
-           let remaining = snapshot?.secondary?.remainingPercent,
-           remaining <= 0
-        {
-            // Preserve Warp "no bonus/exhausted bonus" layout even in show-used mode.
-            weekly = 0
-        }
-        if showUsed,
-           provider == .warp,
-           let remaining = snapshot?.secondary?.remainingPercent,
-           remaining > 0,
-           weekly == 0
-        {
-            // In show-used mode, `0` means "unused", not "missing". Keep the weekly lane present.
-            weekly = Self.loadingPercentEpsilon
-        }
         var credits = self.menuBarCreditsRemainingForIcon(provider: provider, snapshot: snapshot)
         var stale = self.store.isStale(provider: provider)
         var morphProgress: Double?
@@ -546,12 +517,16 @@ extension StatusItemController {
                 "status=\(statusIndicator.rawValue)",
                 "warningFlash=\(warningFlash ? "1" : "0")",
                 "loading=\(isLoading ? "1" : "0")",
+                "hideCritters=\(self.settings.menuBarHidesCritters ? "1" : "0")",
             ].joined(separator: "|")
             if self.shouldSkipProviderIconRender(provider: provider, signature: signature) {
                 self.noteIconPerfRender(skipped: true)
                 return true
             }
-            let image = IconRenderer.makeMorphIcon(progress: morphProgress, style: style)
+            let image = IconRenderer.makeMorphIcon(
+                progress: morphProgress,
+                style: style,
+                hideCritters: self.settings.menuBarHidesCritters)
             self.setButtonImage(
                 warningFlash ? Self.quotaWarningFlashImage(base: image) : image, for: button)
         } else {
@@ -569,6 +544,7 @@ extension StatusItemController {
                 "tilt=\(Self.iconSignatureValue(Double(tilt)))",
                 "warningFlash=\(warningFlash ? "1" : "0")",
                 "loading=\(isLoading ? "1" : "0")",
+                "hideCritters=\(self.settings.menuBarHidesCritters ? "1" : "0")",
             ].joined(separator: "|")
             if self.shouldSkipProviderIconRender(provider: provider, signature: signature) {
                 self.noteIconPerfRender(skipped: true)
@@ -583,7 +559,8 @@ extension StatusItemController {
                 blink: blink,
                 wiggle: wiggle,
                 tilt: tilt,
-                statusIndicator: statusIndicator)
+                statusIndicator: statusIndicator,
+                hideCritters: self.settings.menuBarHidesCritters)
             self.setButtonImage(
                 warningFlash ? Self.quotaWarningFlashImage(base: image) : image, for: button)
         }
@@ -691,14 +668,33 @@ extension StatusItemController {
     }
 
     func menuBarDisplayText(for provider: UsageProvider, snapshot: UsageSnapshot?) -> String? {
+        let mode = self.settings.menuBarDisplayMode
         if provider == .openrouter,
            self.settings.menuBarMetricPreference(for: provider, snapshot: snapshot) == .automatic,
            let balance = snapshot?.openRouterUsage?.balance
         {
             return UsageFormatter.usdString(balance)
         }
+        if provider == .crossmodel,
+           self.settings.menuBarMetricPreference(for: provider, snapshot: snapshot) == .automatic,
+           let usage = snapshot?.crossModelUsage
+        {
+            return usage.balanceDisplay
+        }
+        if provider == .opencodego,
+           let balance = Self.openCodeGoZenBalanceDisplayText(snapshot: snapshot)
+        {
+            return balance
+        }
         if provider == .deepseek,
            let balance = Self.deepSeekBalanceDisplayText(snapshot: snapshot)
+        {
+            return balance
+        }
+        if provider == .mimo,
+           let balance = Self.miMoBalanceDisplayText(
+               snapshot: snapshot,
+               preference: self.settings.menuBarMetricPreference(for: provider, snapshot: snapshot))
         {
             return balance
         }
@@ -707,10 +703,19 @@ extension StatusItemController {
         {
             return balance
         }
-        if provider == .mistral,
-           let spend = Self.mistralSpendDisplayText(snapshot: snapshot)
+        if provider == .poe,
+           let balance = Self.poeBalanceDisplayText(snapshot: snapshot)
         {
-            return spend
+            return balance
+        }
+        if provider == .mistral {
+            let preference = self.settings.menuBarMetricPreference(for: provider, snapshot: snapshot)
+            let hasMonthlyWindow = snapshot?.extraRateWindows?.contains { $0.id == "mistral-monthly-plan" } == true
+            if preference != .monthlyPlan || !hasMonthlyWindow,
+               let spend = Self.mistralSpendDisplayText(snapshot: snapshot)
+            {
+                return spend
+            }
         }
         if provider == .kimik2,
            let credits = Self.kimiK2CreditsDisplayText(snapshot: snapshot)
@@ -723,43 +728,49 @@ extension StatusItemController {
                 mode: self.settings.kiroMenuBarDisplayMode,
                 showUsed: self.settings.usageBarsShowUsed)
         }
-        if self.settings.menuBarMetricPreference(for: provider, snapshot: snapshot) == .extraUsage,
+        if mode != .resetTime,
+           self.settings.menuBarMetricPreference(for: provider, snapshot: snapshot) == .extraUsage,
+           provider != .cursor || mode == .pace,
            let spend = Self.extraUsageSpendDisplayText(snapshot: snapshot)
         {
             return spend
         }
 
         let percentWindow = self.menuBarPercentWindow(for: provider, snapshot: snapshot)
-        let mode = self.settings.menuBarDisplayMode
         let now = Date()
         let codexProjection = self.store.codexConsumerProjectionIfNeeded(
             for: provider,
             surface: .menuBar,
             snapshotOverride: snapshot,
             now: now)
+
+        // The combined "Session + Weekly" metric (Codex and Claude) shows both lanes in percent mode
+        // ("5h 12% · W 45%") and, in pace/both modes, pairs the session usage with the weekly pace.
+        let combinedLanes = self.combinedSessionWeeklyLanes(
+            for: provider, snapshot: snapshot, projection: codexProjection)
+
         let pace: UsagePace?
         switch mode {
         case .percent:
             pace = nil
         case .pace, .both:
-            let paceWindow: RateWindow? = if let codexProjection {
-                codexProjection.rateWindow(for: .weekly)
-            } else if provider == .abacus {
-                // Abacus has no secondary window; pace is computed on primary monthly credits
-                snapshot?.primary
-            } else {
-                percentWindow
-            }
+            let paceWindow = self.menuBarPaceWindow(
+                for: provider,
+                snapshot: snapshot,
+                projection: codexProjection,
+                combinedLanes: combinedLanes,
+                percentWindow: percentWindow)
             pace = paceWindow.flatMap { window in
                 self.store.weeklyPace(provider: provider, window: window, now: now)
             }
+        case .resetTime:
+            return MenuBarDisplayText.displayText(
+                mode: mode,
+                percentWindow: percentWindow,
+                showUsed: self.settings.usageBarsShowUsed,
+                resetTimeDisplayStyle: self.settings.resetTimeDisplayStyle,
+                now: now)
         }
-        let displayText = MenuBarDisplayText.displayText(
-            mode: mode,
-            percentWindow: percentWindow,
-            pace: pace,
-            showUsed: self.settings.usageBarsShowUsed)
-
         if mode == .percent,
            !self.settings.usageBarsShowUsed,
            codexProjection?.menuBarFallback == .creditsBalance,
@@ -771,8 +782,26 @@ extension StatusItemController {
                     .creditsString(from: creditsRemaining)
                     .replacingOccurrences(of: " left", with: "")
         }
+        if let combinedLanes, mode == .percent {
+            if let combinedText = MenuBarDisplayText.combinedSessionWeeklyPercentText(
+                sessionWindow: combinedLanes.session,
+                weeklyWindow: combinedLanes.weekly,
+                showUsed: self.settings.usageBarsShowUsed)
+            {
+                return combinedText
+            }
+        }
 
-        return displayText
+        let displayPercentWindow: RateWindow? = if let combinedLanes {
+            Self.combinedDisplayPercentWindow(lanes: combinedLanes, fallback: percentWindow)
+        } else {
+            percentWindow
+        }
+        return MenuBarDisplayText.displayText(
+            mode: mode,
+            percentWindow: displayPercentWindow,
+            pace: pace,
+            showUsed: self.settings.usageBarsShowUsed)
     }
 
     nonisolated static func deepSeekBalanceDisplayText(snapshot: UsageSnapshot?) -> String? {
@@ -787,6 +816,23 @@ extension StatusItemController {
 
         let balance = rawValue.split(separator: " ", maxSplits: 1).first
         return balance.map(String.init)
+    }
+
+    nonisolated static func miMoBalanceDisplayText(
+        snapshot: UsageSnapshot?,
+        preference: MenuBarMetricPreference) -> String?
+    {
+        guard let snapshot, let mimoUsage = snapshot.mimoUsage else { return nil }
+        if snapshot.primary != nil, preference != .secondary { return nil }
+        let detail = mimoUsage.balanceDetail
+        return detail.components(separatedBy: " (Paid:").first
+    }
+
+    nonisolated static func poeBalanceDisplayText(snapshot: UsageSnapshot?) -> String? {
+        self.displayValue(
+            from: snapshot?.loginMethod(for: .poe),
+            prefix: "Balance:",
+            removingSuffix: "")
     }
 
     nonisolated static func moonshotBalanceDisplayText(snapshot: UsageSnapshot?) -> String? {
@@ -820,6 +866,17 @@ extension StatusItemController {
         guard let cost = snapshot?.providerCost,
               cost.limit > 0,
               cost.used >= 0
+        else {
+            return nil
+        }
+        return UsageFormatter.currencyString(cost.used, currencyCode: cost.currencyCode)
+    }
+
+    nonisolated static func openCodeGoZenBalanceDisplayText(snapshot: UsageSnapshot?) -> String? {
+        guard snapshot?.primary == nil,
+              snapshot?.secondary == nil,
+              let cost = snapshot?.providerCost,
+              cost.period == "Zen balance"
         else {
             return nil
         }
@@ -951,13 +1008,119 @@ extension StatusItemController {
         self.menuBarMetricWindow(for: provider, snapshot: snapshot)
     }
 
-    func primaryProviderForUnifiedIcon() -> UsageProvider {
-        // When "show highest usage" is enabled, auto-select the provider closest to rate limit.
-        if self.settings.menuBarShowsHighestUsage,
-           self.shouldMergeIcons,
-           let highest = self.store.providerWithHighestUsage()
+    /// Resolves the session (5h) and weekly (7d) lanes for the combined "Session + Weekly" menu-bar
+    /// metric, or nil when that metric is not active for `provider`. Codex resolves its lanes through the
+    /// consumer projection; Claude has none, so it classifies by window cadence — a 7-day window the OAuth
+    /// mapper parked in `primary` (the five_hour fallback) must not be mislabeled as a 5-hour session lane.
+    private func combinedSessionWeeklyLanes(
+        for provider: UsageProvider,
+        snapshot: UsageSnapshot?,
+        projection: CodexConsumerProjection?) -> (session: RateWindow?, weekly: RateWindow?)?
+    {
+        guard provider == .codex || provider == .claude,
+              self.settings.menuBarMetricPreference(for: provider, snapshot: snapshot) == .primaryAndSecondary
+        else { return nil }
+        // A Claude account that only exposes an enterprise/extra-usage spend limit has no real
+        // session/weekly lanes; defer to the resolver's spend-limit routing instead of rendering an
+        // empty or 0% placeholder lane under the combined metric.
+        if provider == .claude,
+           let snapshot,
+           MenuBarMetricWindowResolver.claudeSpendLimitWindow(snapshot: snapshot) != nil
         {
-            return highest.provider
+            return nil
+        }
+        let session = Self.combinedSessionLane(snapshot: snapshot, projection: projection)
+        let weekly = projection?.rateWindow(for: .weekly)
+            ?? Self.rateWindow(in: snapshot, matchingCadenceMinutes: Self.weeklyWindowMinutes)
+        return (session, weekly)
+    }
+
+    /// The combined metric's session (5h) lane. Codex resolves it through the consumer projection; other
+    /// providers classify by window cadence. A 5-hour lane the provider only synthesized to stand in for an
+    /// absent session — Claude web's null `five_hour` placeholder, flagged at the boundary — is dropped so a
+    /// weekly-only account falls back to its weekly lane instead of rendering a phantom `5h 0%`/`5h 100%`
+    /// session. A genuine session (even one freshly reset to 0%) is not flagged, so it is kept.
+    private static func combinedSessionLane(
+        snapshot: UsageSnapshot?,
+        projection: CodexConsumerProjection?) -> RateWindow?
+    {
+        if let projected = projection?.rateWindow(for: .session) {
+            return projected
+        }
+        guard let session = Self.rateWindow(in: snapshot, matchingCadenceMinutes: Self.sessionWindowMinutes)
+        else { return nil }
+        if session.isSyntheticPlaceholder {
+            return nil
+        }
+        return session
+    }
+
+    /// The window the weekly pace is computed on in pace/both modes. Codex paces on its projected weekly
+    /// lane; the combined Session + Weekly metric paces on the weekly lane too (matching Codex); Abacus
+    /// has no secondary window so it paces on the primary monthly credits; everything else paces on the
+    /// selected percent window.
+    private func menuBarPaceWindow(
+        for provider: UsageProvider,
+        snapshot: UsageSnapshot?,
+        projection: CodexConsumerProjection?,
+        combinedLanes: (session: RateWindow?, weekly: RateWindow?)?,
+        percentWindow: RateWindow?) -> RateWindow?
+    {
+        if let projection {
+            return projection.rateWindow(for: .weekly)
+        }
+        if provider == .abacus {
+            return snapshot?.primary
+        }
+        if let combinedLanes {
+            return combinedLanes.weekly
+        }
+        return percentWindow
+    }
+
+    /// The usage window shown for the combined metric in pace/both modes. It pairs the SESSION usage with
+    /// the weekly pace, so the usage component normally comes from the session lane — not the
+    /// most-constrained lane that drives the icon/bar. Two exceptions: fall back to the weekly lane when no
+    /// session lane exists (the five_hour OAuth fallback or Claude web's filtered null-session
+    /// placeholder), and surface the weekly lane when it is exhausted
+    /// — it is then the binding cap with no pace to show, and a roomy session number would hide it.
+    private static func combinedDisplayPercentWindow(
+        lanes: (session: RateWindow?, weekly: RateWindow?),
+        fallback: RateWindow?) -> RateWindow?
+    {
+        if let weekly = lanes.weekly, weekly.remainingPercent <= 0 {
+            return weekly
+        }
+        return lanes.session ?? lanes.weekly ?? fallback
+    }
+
+    private static let sessionWindowMinutes = 5 * 60
+    private static let weeklyWindowMinutes = 7 * 24 * 60
+
+    /// Returns the first session/weekly snapshot lane whose window cadence matches `minutes`.
+    /// Used by the combined Session + Weekly metric for providers without a Codex consumer
+    /// projection so a fallback weekly window parked in `primary` is not mislabeled as a session lane.
+    private static func rateWindow(in snapshot: UsageSnapshot?, matchingCadenceMinutes minutes: Int) -> RateWindow? {
+        [snapshot?.primary, snapshot?.secondary]
+            .compactMap(\.self)
+            .first { $0.windowMinutes == minutes }
+    }
+
+    func primaryProviderForUnifiedIcon() -> UsageProvider {
+        // When "show highest usage" is enabled, rank the existing Overview subset by proximity to its limit.
+        if self.settings.menuBarShowsHighestUsage, self.shouldMergeIcons {
+            let activeProviders = self.store.enabledProvidersForDisplay()
+            let overviewProviders = self.settings.resolvedMergedOverviewProviders(
+                activeProviders: activeProviders,
+                maxVisibleProviders: SettingsStore.mergedOverviewProviderLimit)
+            if let highest = self.store.providerWithHighestUsage(candidateProviders: overviewProviders) {
+                return highest.provider
+            }
+            // A nonempty Overview selection remains authoritative while its providers are loading,
+            // unrankable, or exhausted. Only an explicitly empty Overview may use the broad fallback.
+            if let fallback = overviewProviders.first(where: { self.store.isEnabled($0) }) {
+                return fallback
+            }
         }
         if self.shouldMergeIcons, self.settings.mergedMenuLastSelectedWasOverview {
             let enabledProviders = self.store.enabledProvidersForDisplay()
@@ -1037,11 +1200,11 @@ extension StatusItemController {
         if isFallbackOnly { return false }
 
         let isStale = self.store.isStale(provider: provider)
-        let hasData = self.store.snapshot(for: provider) != nil
-        if provider == .warp, !hasData, self.store.refreshingProviders.contains(provider) {
+        let hasSatisfiedUsageFetch = self.store.hasSatisfiedUsageFetch(for: provider)
+        if provider == .warp, !hasSatisfiedUsageFetch, self.store.refreshingProviders.contains(provider) {
             return true
         }
-        return !hasData && !isStale
+        return !hasSatisfiedUsageFetch && !isStale
     }
 
     func updateAnimationState() {

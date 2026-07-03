@@ -7,6 +7,95 @@ import Testing
 @Suite(.serialized)
 struct StatusMenuHostedSubmenuRefreshTests {
     @Test
+    func `status components change open menu readiness`() {
+        let settings = Self.makeSettings()
+        settings.statusChecksEnabled = true
+        settings.setProviderEnabled(
+            provider: .claude,
+            metadata: ProviderDescriptorRegistry.descriptor(for: .claude).metadata,
+            enabled: true)
+        let fetcher = UsageFetcher()
+        let store = UsageStore(fetcher: fetcher, browserDetection: BrowserDetection(cacheTTL: 0), settings: settings)
+        let controller = StatusItemController(
+            store: store,
+            settings: settings,
+            account: fetcher.loadAccountInfo(),
+            updater: DisabledUpdaterController(),
+            preferencesSelection: PreferencesSelection(),
+            statusBar: .system)
+        defer { controller.releaseStatusItemsForTesting() }
+
+        let before = controller.menuAdjunctReadinessSignature()
+        store.statusComponents[.claude] = [
+            ProviderStatusComponent(
+                id: "api",
+                name: "API",
+                indicator: .none,
+                status: "operational"),
+        ]
+
+        #expect(controller.menuAdjunctReadinessSignature() != before)
+    }
+
+    @Test
+    func `status submenu link stays scoped to its provider`() throws {
+        let settings = Self.makeSettings()
+        settings.statusChecksEnabled = true
+        let fetcher = UsageFetcher()
+        let store = UsageStore(fetcher: fetcher, browserDetection: BrowserDetection(cacheTTL: 0), settings: settings)
+        let controller = StatusItemController(
+            store: store,
+            settings: settings,
+            account: fetcher.loadAccountInfo(),
+            updater: DisabledUpdaterController(),
+            preferencesSelection: PreferencesSelection(),
+            statusBar: .system)
+        defer { controller.releaseStatusItemsForTesting() }
+
+        let submenu = NSMenu()
+        #expect(controller.appendStatusComponentsItem(
+            to: submenu,
+            provider: .claude,
+            width: StatusItemController.menuCardBaseWidth))
+        #expect(controller.hydrateHostedSubviewMenuIfNeeded(submenu))
+
+        let link = try #require(submenu.items.last)
+        #expect(link.action == #selector(StatusItemController.openStatusPageFromMenuItem(_:)))
+        #expect(link.identifier?.rawValue == UsageProvider.claude.rawValue)
+        #expect(link.target === controller)
+    }
+
+    @Test
+    func `storage native row preserves its plain menu title`() throws {
+        let settings = Self.makeSettings()
+        settings.providerStorageFootprintsEnabled = true
+        let fetcher = UsageFetcher()
+        let store = UsageStore(fetcher: fetcher, browserDetection: BrowserDetection(cacheTTL: 0), settings: settings)
+        Self.seedStorageFootprint(in: store)
+
+        let controller = StatusItemController(
+            store: store,
+            settings: settings,
+            account: fetcher.loadAccountInfo(),
+            updater: DisabledUpdaterController(),
+            preferencesSelection: PreferencesSelection(),
+            statusBar: .system)
+        defer { controller.releaseStatusItemsForTesting() }
+
+        let menu = NSMenu()
+        #expect(controller.addStorageMenuCardSection(
+            to: menu,
+            provider: .claude,
+            width: StatusItemController.menuCardBaseWidth))
+        let item = try #require(menu.items.first)
+        #expect(item.title.hasPrefix(L("Storage")))
+        #expect(item.title == item.attributedTitle?.string)
+        #expect(item.view == nil)
+        #expect(item.isEnabled)
+        #expect(item.submenu != nil)
+    }
+
+    @Test
     func `open parent menu defers data rebuild until parent tracking ends`() async throws {
         let previousMenuCardRendering = StatusItemController.menuCardRenderingEnabled
         StatusItemController.menuCardRenderingEnabled = true
@@ -20,6 +109,7 @@ struct StatusMenuHostedSubmenuRefreshTests {
         settings.mergeIcons = true
         settings.selectedMenuProvider = .claude
         settings.costUsageEnabled = true
+        settings.costSummaryDisplayStyle = .both
         Self.enableOnlyClaude(settings)
 
         let fetcher = UsageFetcher()
@@ -44,10 +134,9 @@ struct StatusMenuHostedSubmenuRefreshTests {
 
         let costItem = try #require(menu.items.first { ($0.representedObject as? String) == "menuCardCost" })
         #expect(costItem.view == nil)
+        #expect(costItem.title == StatusItemController.costMenuTitle)
+        #expect(costItem.isEnabled)
         let submenu = try #require(costItem.submenu)
-        let submenuAction = try #require(costItem.action)
-        #expect(NSStringFromSelector(submenuAction) == "submenuAction:")
-        #expect((costItem.target as? NSMenu) === submenu)
         #expect(submenu.items.first?.representedObject as? String == StatusItemController.costHistoryChartID)
         #expect(submenu.minimumWidth >= StatusItemController.menuCardBaseWidth)
         #expect(submenu.items.first?.view == nil)

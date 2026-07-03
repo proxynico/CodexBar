@@ -2,8 +2,10 @@ import CodexBarCore
 import Commander
 #if canImport(Darwin)
 import Darwin
-#else
+#elseif canImport(Glibc)
 import Glibc
+#elseif canImport(Musl)
+import Musl
 #endif
 import Foundation
 #if canImport(FoundationNetworking)
@@ -33,6 +35,10 @@ enum CodexBarCLI {
             Self.bootstrapLogging(path: invocation.path, values: invocation.parsedValues)
             switch invocation.path {
             case ["usage"]:
+                let signalMonitor = CLITerminationSignalMonitor { signalNumber in
+                    CLITerminationSignalMonitor.terminateActiveHelpersAndReraise(signalNumber)
+                }
+                defer { signalMonitor.cancel() }
                 await self.runUsage(invocation.parsedValues)
             case ["cost"]:
                 await self.runCost(invocation.parsedValues)
@@ -53,6 +59,10 @@ enum CodexBarCLI {
             case ["cache", "clear"]:
                 self.runCacheClear(invocation.parsedValues)
             case ["diagnose"]:
+                let signalMonitor = CLITerminationSignalMonitor { signalNumber in
+                    CLITerminationSignalMonitor.terminateActiveHelpersAndReraise(signalNumber)
+                }
+                defer { signalMonitor.cancel() }
                 await self.runDiagnose(invocation.parsedValues)
             default:
                 Self.exit(

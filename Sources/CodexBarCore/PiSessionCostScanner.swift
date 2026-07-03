@@ -1,5 +1,20 @@
 import Foundation
 
+private final class PiSessionISO8601FormatterBox: @unchecked Sendable {
+    let lock = NSLock()
+    let withFractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    let plain: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+}
+
 enum PiSessionCostScanner {
     struct Options {
         var piSessionsRoot: URL?
@@ -46,6 +61,9 @@ enum PiSessionCostScanner {
     private static let costScale = 1_000_000_000.0
     private static let maxLineBytes = 16 * 1024 * 1024
     private static let maxSafeRoundedInt = Double(Int.max) - 1
+    private static let sessionStartFilenameRegex = try? NSRegularExpression(
+        pattern: "^(\\d{4}-\\d{2}-\\d{2})T(\\d{2})-(\\d{2})-(\\d{2})-(\\d{3})Z_")
+    private static let isoFormatterBox = PiSessionISO8601FormatterBox()
 
     static func loadDailyReport(
         provider: UsageProvider,
@@ -602,6 +620,8 @@ enum PiSessionCostScanner {
     {
         switch provider {
         case .codex:
+            // Pi records input, cache reads, and cache writes as disjoint counts. Codex pricing
+            // expects cached input to be a subset of total input, so reconstruct that total here.
             CostUsagePricing.codexCostUSD(
                 model: modelName,
                 inputTokens: usage.inputTokens + usage.cacheReadTokens + usage.cacheWriteTokens,
@@ -819,8 +839,7 @@ extension PiSessionCostScanner {
     }
 
     private static func parseSessionStartFromFilename(_ filename: String) -> Date? {
-        let pattern = "^(\\d{4}-\\d{2}-\\d{2})T(\\d{2})-(\\d{2})-(\\d{2})-(\\d{3})Z_"
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        guard let regex = self.sessionStartFilenameRegex else { return nil }
         let range = NSRange(filename.startIndex..<filename.endIndex, in: filename)
         guard let match = regex.firstMatch(in: filename, range: range) else { return nil }
         guard (1...5).allSatisfy({ Range(match.range(at: $0), in: filename) != nil }) else { return nil }
@@ -833,14 +852,10 @@ extension PiSessionCostScanner {
     }
 
     private static func parseISO(_ text: String) -> Date? {
-        let withFractional = ISO8601DateFormatter()
-        withFractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = withFractional.date(from: text) {
-            return date
-        }
-        let plain = ISO8601DateFormatter()
-        plain.formatOptions = [.withInternetDateTime]
-        return plain.date(from: text)
+        self.isoFormatterBox.lock.lock()
+        defer { self.isoFormatterBox.lock.unlock() }
+        return self.isoFormatterBox.withFractional.date(from: text)
+            ?? self.isoFormatterBox.plain.date(from: text)
     }
 
     private static func localMidnight(_ date: Date) -> Date {

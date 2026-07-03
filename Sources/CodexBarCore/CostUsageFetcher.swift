@@ -116,7 +116,11 @@ public struct CostUsageFetcher: Sendable {
                 environment: environment,
                 since: since,
                 until: until)
-            return Self.tokenSnapshot(from: daily, now: now, historyDays: clampedHistoryDays)
+            return Self.tokenSnapshot(
+                from: daily,
+                now: now,
+                historyDays: clampedHistoryDays,
+                useCurrentLocalDayForSession: false)
         }
 
         var options = overrideScannerOptions ?? CostUsageScanner.Options()
@@ -146,53 +150,60 @@ public struct CostUsageFetcher: Sendable {
         if forceRefresh {
             options.refreshMinIntervalSeconds = 0
         }
-        let checkCancellation: CostUsageScanner.CancellationCheck = {
-            try Task.checkCancellation()
+        var resolvedPiOptions = overridePiScannerOptions ?? PiSessionCostScanner.Options()
+        if resolvedPiOptions.cacheRoot == nil {
+            resolvedPiOptions.cacheRoot = options.cacheRoot
         }
-        try Task.checkCancellation()
-        var daily = try CostUsageScanner.loadDailyReportCancellable(
-            provider: provider,
-            since: since,
-            until: until,
-            now: now,
-            options: options,
-            checkCancellation: checkCancellation)
-        try Task.checkCancellation()
+        if forceRefresh {
+            resolvedPiOptions.refreshMinIntervalSeconds = 0
+        }
+        let piOptions = resolvedPiOptions
 
-        if provider == .vertexai,
-           !allowVertexClaudeFallback,
-           options.claudeLogProviderFilter == .vertexAIOnly,
-           daily.data.isEmpty
-        {
-            var fallback = options
-            fallback.claudeLogProviderFilter = .all
-            daily = try CostUsageScanner.loadDailyReportCancellable(
+        try Task.checkCancellation()
+        // The corpus scans below are synchronous and can run for minutes on large session
+        // archives. They execute on the dedicated scan queue so they never occupy a cooperative
+        // pool thread; CostUsageScanExecutor bridges this task's cancellation into the
+        // scanner-level checks.
+        let scanOptions = options
+        let daily = try await CostUsageScanExecutor.run { checkCancellation in
+            var daily = try CostUsageScanner.loadDailyReportCancellable(
                 provider: provider,
                 since: since,
                 until: until,
                 now: now,
-                options: fallback,
+                options: scanOptions,
                 checkCancellation: checkCancellation)
-            try Task.checkCancellation()
-        }
+            try checkCancellation()
 
-        if provider == .codex || provider == .claude {
-            var piOptions = overridePiScannerOptions ?? PiSessionCostScanner.Options()
-            if piOptions.cacheRoot == nil {
-                piOptions.cacheRoot = options.cacheRoot
+            if provider == .vertexai,
+               !allowVertexClaudeFallback,
+               scanOptions.claudeLogProviderFilter == .vertexAIOnly,
+               daily.data.isEmpty
+            {
+                var fallback = scanOptions
+                fallback.claudeLogProviderFilter = .all
+                daily = try CostUsageScanner.loadDailyReportCancellable(
+                    provider: provider,
+                    since: since,
+                    until: until,
+                    now: now,
+                    options: fallback,
+                    checkCancellation: checkCancellation)
+                try checkCancellation()
             }
-            if forceRefresh {
-                piOptions.refreshMinIntervalSeconds = 0
+
+            if provider == .codex || provider == .claude {
+                let piReport = try PiSessionCostScanner.loadDailyReportCancellable(
+                    provider: provider,
+                    since: since,
+                    until: until,
+                    now: now,
+                    options: piOptions,
+                    checkCancellation: checkCancellation)
+                try checkCancellation()
+                daily = CostUsageDailyReport.merged([daily, piReport])
             }
-            let piReport = try PiSessionCostScanner.loadDailyReportCancellable(
-                provider: provider,
-                since: since,
-                until: until,
-                now: now,
-                options: piOptions,
-                checkCancellation: checkCancellation)
-            try Task.checkCancellation()
-            daily = CostUsageDailyReport.merged([daily, piReport])
+            return daily
         }
 
         return Self.tokenSnapshot(from: daily, now: now, historyDays: clampedHistoryDays)
@@ -210,7 +221,9 @@ public struct CostUsageFetcher: Sendable {
             return nil
         }
 
-        return await Task.detached(priority: .utility) {
+        // Decoding the persisted scan cache parses multi-megabyte JSON; keep it off the
+        // cooperative pool alongside the scans themselves.
+        let cachedSnapshot: CostUsageTokenSnapshot?? = try? await CostUsageScanExecutor.run { _ in
             let clampedHistoryDays = max(1, min(365, historyDays))
             let until = now
             let since = Calendar.current.date(byAdding: .day, value: -(clampedHistoryDays - 1), to: now) ?? now
@@ -247,7 +260,8 @@ public struct CostUsageFetcher: Sendable {
                 from: CostUsageDailyReport.merged(reports),
                 now: now,
                 historyDays: clampedHistoryDays)
-        }.value
+        }
+        return cachedSnapshot.flatMap(\.self)
     }
 
     private static func loadBedrockDailyReport(
@@ -266,20 +280,26 @@ public struct CostUsageFetcher: Sendable {
     static func tokenSnapshot(
         from daily: CostUsageDailyReport,
         now: Date,
-        historyDays: Int = 30) -> CostUsageTokenSnapshot
+        historyDays: Int = 30,
+        useCurrentLocalDayForSession: Bool = true) -> CostUsageTokenSnapshot
     {
-        // Pick the most recent day; break ties by cost/tokens to keep a stable "session" row.
-        let currentDay = daily.data.max { lhs, rhs in
-            let lDate = CostUsageDateParser.parse(lhs.date) ?? .distantPast
-            let rDate = CostUsageDateParser.parse(rhs.date) ?? .distantPast
-            if lDate != rDate { return lDate < rDate }
-            let lCost = lhs.costUSD ?? -1
-            let rCost = rhs.costUSD ?? -1
-            if lCost != rCost { return lCost < rCost }
-            let lTokens = lhs.totalTokens ?? -1
-            let rTokens = rhs.totalTokens ?? -1
-            if lTokens != rTokens { return lTokens < rTokens }
-            return lhs.date < rhs.date
+        let sessionEntry = useCurrentLocalDayForSession
+            ? CostUsageTokenSnapshot.entry(in: daily.data, forLocalDayContaining: now)
+            : CostUsageTokenSnapshot.latestEntry(in: daily.data)
+        let hasHistoricalRows = !daily.data.isEmpty
+        let sessionTokens: Int? = if let sessionEntry {
+            sessionEntry.totalTokens
+        } else if hasHistoricalRows {
+            0
+        } else {
+            nil
+        }
+        let sessionCostUSD: Double? = if let sessionEntry {
+            sessionEntry.costUSD
+        } else if hasHistoricalRows {
+            0
+        } else {
+            nil
         }
         // Prefer summary totals when present; fall back to summing daily entries.
         let totalFromSummary = daily.summary?.totalCostUSD
@@ -290,8 +310,8 @@ public struct CostUsageFetcher: Sendable {
         let last30DaysTokens = totalTokensFromSummary ?? (totalTokensFromEntries > 0 ? totalTokensFromEntries : nil)
 
         return CostUsageTokenSnapshot(
-            sessionTokens: currentDay?.totalTokens,
-            sessionCostUSD: currentDay?.costUSD,
+            sessionTokens: sessionTokens,
+            sessionCostUSD: sessionCostUSD,
             last30DaysTokens: last30DaysTokens,
             last30DaysCostUSD: last30DaysCostUSD,
             historyDays: historyDays,

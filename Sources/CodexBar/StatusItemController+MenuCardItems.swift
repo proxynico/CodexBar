@@ -3,12 +3,15 @@ import SwiftUI
 
 extension StatusItemController {
     func refreshMenuCardHeights(in menu: NSMenu) {
-        let cardItems = menu.items.filter { item in
-            (item.representedObject as? String)?.hasPrefix("menuCard") == true
-        }
-        for item in cardItems {
-            guard let view = item.view else { continue }
-            let width = self.renderedMenuWidth(for: menu)
+        let width = self.renderedMenuWidth(for: menu)
+        for item in menu.items {
+            if let view = item.view as? PersistentRefreshMenuView {
+                guard abs(view.frame.width - width) > 0.5 else { continue }
+                view.applySize(width: width, height: PersistentRefreshRowMetrics.defaults.rowHeight)
+                continue
+            }
+            guard let view = item.view, view is any MenuCardMeasuring else { continue }
+            guard abs(view.frame.width - width) > 0.5 else { continue }
             let id = item.representedObject as? String ?? "menuCard"
             let scope = self.menuProvider(for: menu)?.rawValue ?? id
             let height = self.cachedMenuCardHeight(for: id, scope: scope, width: width) {
@@ -29,11 +32,14 @@ extension StatusItemController {
         submenu: NSMenu? = nil,
         submenuIndicatorAlignment: Alignment = .topTrailing,
         submenuIndicatorTopPadding: CGFloat = 8,
+        containsInteractiveControls: Bool = false,
+        usesGPUSelection: Bool = false,
         onClick: (() -> Void)? = nil) -> NSMenuItem
     {
-        if !Self.menuCardRenderingEnabled {
+        let allowsMenuHighlight = submenu != nil || onClick != nil
+        if !self.menuCardRenderingEnabledForController {
             let item = NSMenuItem()
-            item.isEnabled = true
+            item.isEnabled = allowsMenuHighlight
             item.representedObject = id
             item.submenu = submenu
             if submenu != nil {
@@ -41,6 +47,39 @@ extension StatusItemController {
                 item.action = #selector(self.menuCardNoOp(_:))
             }
             return item
+        }
+
+        if usesGPUSelection {
+            // Selection is painted by AppKit/GPU, so the SwiftUI content is pinned to its normal
+            // appearance via a `highlightState` that is never flipped; these rows skip hosting-view
+            // recycling because the recycler is typed to `MenuCardItemHostingView`.
+            let wrapped = MenuCardSectionContainerView(
+                highlightState: MenuCardHighlightState(),
+                showsSubmenuIndicator: submenu != nil,
+                submenuIndicatorAlignment: submenuIndicatorAlignment,
+                submenuIndicatorTopPadding: submenuIndicatorTopPadding,
+                refreshMonitor: self.menuCardRefreshMonitor)
+            {
+                view
+            }
+            let gpuHosting = GPUSelectionHostingView(
+                rootView: wrapped,
+                allowsMenuHighlight: allowsMenuHighlight,
+                onClick: onClick)
+            let gpuHeight = self.cachedMenuCardHeight(
+                for: id,
+                scope: heightCacheScope ?? id,
+                width: width,
+                fingerprint: heightCacheFingerprint)
+            {
+                self.menuCardHeight(for: gpuHosting, width: width)
+            }
+            gpuHosting.frame = NSRect(origin: .zero, size: NSSize(width: width, height: gpuHeight))
+            return self.makeMenuCardNSMenuItem(
+                hosting: gpuHosting,
+                id: id,
+                submenu: submenu,
+                isEnabled: allowsMenuHighlight || containsInteractiveControls)
         }
 
         let hosting: MenuCardItemHostingView<MenuCardSectionContainerView<CardContent>>
@@ -52,11 +91,15 @@ extension StatusItemController {
                 highlightState: recycled.highlightState,
                 showsSubmenuIndicator: submenu != nil,
                 submenuIndicatorAlignment: submenuIndicatorAlignment,
-                submenuIndicatorTopPadding: submenuIndicatorTopPadding)
+                submenuIndicatorTopPadding: submenuIndicatorTopPadding,
+                refreshMonitor: self.menuCardRefreshMonitor)
             {
                 view
             }
-            recycled.prepareForReuse(rootView: wrapped, onClick: onClick)
+            recycled.prepareForReuse(
+                rootView: wrapped,
+                allowsMenuHighlight: allowsMenuHighlight,
+                onClick: onClick)
             hosting = recycled
         } else {
             let highlightState = MenuCardHighlightState()
@@ -64,11 +107,16 @@ extension StatusItemController {
                 highlightState: highlightState,
                 showsSubmenuIndicator: submenu != nil,
                 submenuIndicatorAlignment: submenuIndicatorAlignment,
-                submenuIndicatorTopPadding: submenuIndicatorTopPadding)
+                submenuIndicatorTopPadding: submenuIndicatorTopPadding,
+                refreshMonitor: self.menuCardRefreshMonitor)
             {
                 view
             }
-            hosting = MenuCardItemHostingView(rootView: wrapped, highlightState: highlightState, onClick: onClick)
+            hosting = MenuCardItemHostingView(
+                rootView: wrapped,
+                highlightState: highlightState,
+                allowsMenuHighlight: allowsMenuHighlight,
+                onClick: onClick)
         }
         let height = self.cachedMenuCardHeight(
             for: id,
@@ -79,10 +127,23 @@ extension StatusItemController {
             self.menuCardHeight(for: hosting, width: width)
         }
         hosting.frame = NSRect(origin: .zero, size: NSSize(width: width, height: height))
+        return self.makeMenuCardNSMenuItem(
+            hosting: hosting,
+            id: id,
+            submenu: submenu,
+            isEnabled: allowsMenuHighlight || containsInteractiveControls)
+    }
 
+    /// Wraps a measured hosting view in the `NSMenuItem` the menu installs, wiring submenu routing.
+    private func makeMenuCardNSMenuItem(
+        hosting: NSView,
+        id: String,
+        submenu: NSMenu?,
+        isEnabled: Bool) -> NSMenuItem
+    {
         let item = NSMenuItem()
         item.view = hosting
-        item.isEnabled = true
+        item.isEnabled = isEnabled
         item.representedObject = id
         item.submenu = submenu
         if submenu != nil {

@@ -24,6 +24,16 @@ struct BrowserCookieOrderStatusStringTests {
     }
 
     @Test
+    func `cursor no session shows full disk access hint before browser list`() throws {
+        let order = ProviderDefaults.metadata[.cursor]?.browserCookieOrder ?? Browser.defaultImportOrder
+        let message = try #require(CursorStatusProbeError.noSessionCookie.errorDescription)
+        let fullDiskAccessRange = try #require(message.range(of: CursorStatusProbeError.safariFullDiskAccessHint))
+        let browserListRange = try #require(message.range(of: order.loginHint))
+
+        #expect(fullDiskAccessRange.lowerBound < browserListRange.lowerBound)
+    }
+
+    @Test
     func `factory no session includes browser login hint`() {
         let order = ProviderDefaults.metadata[.factory]?.browserCookieOrder ?? Browser.defaultImportOrder
         let message = FactoryStatusProbeError.noSessionCookie.errorDescription ?? ""
@@ -54,5 +64,10 @@ struct BrowserCookieOrderStatusStringTests {
         #expect(!order.contains(.arc))
     }
 
+    @Test
+    func `copilot cookie imports default to chrome only`() {
+        #expect(ProviderDefaults.metadata[.copilot]?.browserCookieOrder == [.chrome])
+        #expect(ProviderBrowserCookieDefaults.copilotCookieImportOrder == [.chrome])
+    }
     #endif
 }

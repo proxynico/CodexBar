@@ -44,6 +44,10 @@ public enum ClaudeStatusProbeError: LocalizedError, Sendable {
 
 /// Runs `claude` inside a PTY, sends `/usage`, and parses the rendered text panel.
 public struct ClaudeStatusProbe: Sendable {
+    public static let subscriptionQuotaUnavailableDescription =
+        "Claude CLI /usage returned a subscription notice without session quota data. " +
+        "Local cost and token history remain available."
+
     public var claudeBinary: String = "claude"
     public var timeout: TimeInterval = 20.0
     public var keepCLISessionsAlive: Bool = false
@@ -462,7 +466,7 @@ public struct ClaudeStatusProbe: Sendable {
             return "Claude CLI usage endpoint is rate limited right now. Please try again later."
         }
         if self.isSubscriptionNoticeOnly(text: text) {
-            return "Claude CLI /usage returned a subscription notice without session quota data."
+            return self.subscriptionQuotaUnavailableDescription
         }
         if lower.contains("failed to load usage data") {
             return "Claude CLI could not load usage data. Open the CLI and retry `/usage`."
@@ -495,6 +499,10 @@ public struct ClaudeStatusProbe: Sendable {
             || normalized.contains("%used") || normalized.contains("%left") || normalized.contains("%remaining")
             || normalized.contains("%available")
         return !hasQuotaData
+    }
+
+    public static func isSubscriptionQuotaUnavailableDescription(_ text: String?) -> Bool {
+        text?.localizedCaseInsensitiveContains("subscription notice without session quota data") == true
     }
 
     /// Collect remaining percentages in the order they appear; used as a backup when labels move/rename.
@@ -697,7 +705,10 @@ public struct ClaudeStatusProbe: Sendable {
         }
         // Capture any "Claude <...>" phrase (e.g., Max/Pro/Ultra/Team) to avoid future plan-name churn.
         // Strip any leading ANSI that may have survived (rare) before matching.
-        let planPattern = #"(?i)(claude\s+[a-z0-9][a-z0-9\s._-]{0,24})"#
+        // Use horizontal whitespace ([ \t]) rather than \s so the match stays on a single rendered line:
+        // \s spans newlines, which let "…use Claude" bridge into the /usage panel's "d → today" hint and
+        // produced a bogus "Dtoday" plan label after ANSI stripping glued the lines together.
+        let planPattern = #"(?i)(claude[ \t]+[a-z0-9][a-z0-9 \t._-]{0,24})"#
         var candidates: [String] = []
         if let regex = try? NSRegularExpression(pattern: planPattern, options: []) {
             let nsrange = NSRange(text.startIndex..<text.endIndex, in: text)

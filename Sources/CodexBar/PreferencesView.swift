@@ -2,35 +2,32 @@ import AppKit
 import CodexBarCore
 import SwiftUI
 
-enum PreferencesTab: String, CaseIterable, Hashable {
+/// Sidebar destinations of the settings window: fixed app panes plus one entry per provider.
+enum SettingsPane: Hashable {
     case general
-    case providers
     case display
     case advanced
     case about
     case debug
+    case provider(UsageProvider)
 
-    static let defaultWidth: CGFloat = 546
-    static let providersWidth: CGFloat = 792
-    static let windowHeight: CGFloat = 638
+    static let windowWidth: CGFloat = 920
+    static let windowHeight: CGFloat = 640
+    static let windowMinWidth: CGFloat = 780
+    static let windowMinHeight: CGFloat = 520
+    static let sidebarWidth: CGFloat = 224
+    static let sidebarMinWidth: CGFloat = 224
 
     var title: String {
         switch self {
         case .general: L("tab_general")
-        case .providers: L("tab_providers")
         case .display: L("tab_display")
         case .advanced: L("tab_advanced")
         case .about: L("tab_about")
         case .debug: L("tab_debug")
+        case let .provider(provider):
+            ProviderDescriptorRegistry.descriptor(for: provider).metadata.displayName
         }
-    }
-
-    var preferredWidth: CGFloat {
-        self == .providers ? PreferencesTab.providersWidth : PreferencesTab.defaultWidth
-    }
-
-    var preferredHeight: CGFloat {
-        PreferencesTab.windowHeight
     }
 }
 
@@ -43,8 +40,8 @@ struct PreferencesView: View {
     let managedCodexAccountCoordinator: ManagedCodexAccountCoordinator
     let codexAccountPromotionCoordinator: CodexAccountPromotionCoordinator
     let runProviderLoginFlow: @MainActor (UsageProvider) async -> Void
-    @State private var contentWidth: CGFloat = PreferencesTab.general.preferredWidth
-    @State private var contentHeight: CGFloat = PreferencesTab.general.preferredHeight
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var columnVisibility: NavigationSplitViewVisibility = .doubleColumn
 
     init(
         settings: SettingsStore,
@@ -69,88 +66,203 @@ struct PreferencesView: View {
     }
 
     var body: some View {
-        TabView(selection: self.$selection.tab) {
-            GeneralPane(settings: self.settings, store: self.store)
-                .tabItem { Label(L("tab_general"), systemImage: "gearshape") }
-                .tag(PreferencesTab.general)
+        NavigationSplitView(columnVisibility: self.columnVisibilityBinding) {
+            SettingsSidebarView(settings: self.settings, store: self.store, selection: self.$selection.pane)
+                .frame(
+                    minWidth: SettingsPane.sidebarMinWidth,
+                    idealWidth: SettingsPane.sidebarWidth,
+                    maxWidth: SettingsPane.sidebarWidth)
+                .navigationSplitViewColumnWidth(
+                    min: SettingsPane.sidebarMinWidth,
+                    ideal: SettingsPane.sidebarWidth,
+                    max: SettingsPane.sidebarWidth)
+                .toolbar(removing: .sidebarToggle)
+        } detail: {
+            self.detailView
+                .navigationTitle(self.selection.pane.title)
+        }
+        .frame(
+            minWidth: SettingsPane.windowMinWidth,
+            idealWidth: SettingsPane.windowWidth,
+            maxWidth: .infinity,
+            minHeight: SettingsPane.windowMinHeight,
+            idealHeight: SettingsPane.windowHeight,
+            maxHeight: .infinity)
+        .id(self.settings.appLanguage)
+        .background {
+            SettingsWindowAppearanceBridge(colorScheme: self.colorScheme)
+                .allowsHitTesting(false)
+        }
+        .onAppear {
+            self.ensureValidSelection()
+            self.columnVisibility = .doubleColumn
+        }
+        .onChange(of: self.settings.debugMenuEnabled) { _, _ in
+            self.ensureValidSelection()
+        }
+    }
 
+    @ViewBuilder
+    private var detailView: some View {
+        switch self.selection.pane {
+        case .general:
+            GeneralPane(settings: self.settings)
+        case .display:
+            DisplayPane(settings: self.settings, store: self.store)
+        case .advanced:
+            AdvancedPane(settings: self.settings, store: self.store)
+        case .about:
+            AboutPane(updater: self.updater)
+        case .debug:
+            DebugPane(settings: self.settings, store: self.store)
+        case let .provider(provider):
             ProvidersPane(
+                provider: provider,
                 settings: self.settings,
                 store: self.store,
                 managedCodexAccountCoordinator: self.managedCodexAccountCoordinator,
                 codexAccountPromotionCoordinator: self.codexAccountPromotionCoordinator,
                 runProviderLoginFlow: self.runProviderLoginFlow)
-                .tabItem { Label(L("tab_providers"), systemImage: "square.grid.2x2") }
-                .tag(PreferencesTab.providers)
+                .id(provider)
+        }
+    }
 
-            DisplayPane(settings: self.settings, store: self.store)
-                .tabItem { Label(L("tab_display"), systemImage: "eye") }
-                .tag(PreferencesTab.display)
+    private var columnVisibilityBinding: Binding<NavigationSplitViewVisibility> {
+        Binding(
+            get: { self.columnVisibility },
+            set: { self.columnVisibility = Self.visibleColumnVisibility(for: $0) })
+    }
 
-            AdvancedPane(settings: self.settings)
-                .tabItem { Label(L("tab_advanced"), systemImage: "slider.horizontal.3") }
-                .tag(PreferencesTab.advanced)
+    static func visibleColumnVisibility(for _: NavigationSplitViewVisibility) -> NavigationSplitViewVisibility {
+        .doubleColumn
+    }
 
-            AboutPane(updater: self.updater)
-                .tabItem { Label(L("tab_about"), systemImage: "info.circle") }
-                .tag(PreferencesTab.about)
+    private func ensureValidSelection() {
+        if !self.settings.debugMenuEnabled, self.selection.pane == .debug {
+            self.selection.pane = .general
+        }
+    }
+}
 
-            if self.settings.debugMenuEnabled {
-                DebugPane(settings: self.settings, store: self.store)
-                    .tabItem { Label(L("tab_debug"), systemImage: "ladybug") }
-                    .tag(PreferencesTab.debug)
+@MainActor
+enum SettingsWindowSizing {
+    static func enforceMinimumSize(_ window: NSWindow) {
+        let toolbarHeight = max(0, window.frame.height - window.contentLayoutRect.height)
+        let minimumSize = NSSize(
+            width: SettingsPane.windowMinWidth,
+            height: SettingsPane.windowMinHeight + toolbarHeight)
+        window.minSize = minimumSize
+
+        if window.frame.width < minimumSize.width || window.frame.height < minimumSize.height {
+            var frame = window.frame
+            let repairedSize = NSSize(
+                width: max(frame.width, minimumSize.width),
+                height: max(frame.height, minimumSize.height))
+            frame.origin.y += frame.height - repairedSize.height
+            frame.size = repairedSize
+            window.setFrame(frame, display: true)
+        }
+
+        self.enforceSidebarWidth(in: window)
+    }
+
+    private static func enforceSidebarWidth(in window: NSWindow) {
+        // SwiftUI's split-view identifier is private and has changed across macOS releases.
+        // The Settings navigation split is the widest vertical two-pane split in this window.
+        guard let splitView = window.contentView?.descendantSplitViews
+            .filter({ $0.isVertical && $0.subviews.count == 2 })
+            .max(by: { $0.bounds.width < $1.bounds.width })
+        else {
+            return
+        }
+
+        let sidebar = splitView.subviews[0]
+        guard sidebar.frame.width < SettingsPane.sidebarWidth else { return }
+        splitView.setPosition(SettingsPane.sidebarWidth, ofDividerAt: 0)
+        splitView.adjustSubviews()
+    }
+}
+
+@MainActor
+enum SettingsWindowAppearance {
+    typealias ResetAction = @MainActor @Sendable () -> Void
+    typealias ResetScheduler = @MainActor @Sendable (@escaping ResetAction) -> Void
+
+    static func refresh(
+        _ window: NSWindow,
+        application: NSApplication = NSApp,
+        scheduleReset: ResetScheduler = Self.scheduleReset)
+    {
+        SettingsWindowSizing.enforceMinimumSize(window)
+        window.appearanceSource = application
+        // Pulse the exact effective appearance so the native toolbar redraws without
+        // dropping inherited accessibility attributes, then restore KVO inheritance.
+        window.appearance = application.effectiveAppearance
+        scheduleReset { [weak window] in
+            if let window {
+                SettingsWindowSizing.enforceMinimumSize(window)
             }
-        }
-        .id(self.settings.appLanguage)
-        .padding(.horizontal, 24)
-        .padding(.vertical, 16)
-        .frame(width: self.contentWidth, height: self.contentHeight)
-        .onAppear {
-            self.updateLayout(for: self.selection.tab, animate: false)
-            self.ensureValidTabSelection()
-        }
-        .onChange(of: self.selection.tab) { _, newValue in
-            self.updateLayout(for: newValue, animate: true)
-        }
-        .onChange(of: self.settings.debugMenuEnabled) { _, _ in
-            self.ensureValidTabSelection()
+            window?.appearance = nil
+            window?.viewsNeedDisplay = true
         }
     }
 
-    private func updateLayout(for tab: PreferencesTab, animate: Bool) {
-        let change = {
-            self.contentWidth = tab.preferredWidth
-            self.contentHeight = tab.preferredHeight
+    static func scheduleReset(_ action: @escaping ResetAction) {
+        Task { @MainActor in
+            await Task.yield()
+            action()
         }
-        if animate {
-            withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) { change() }
-        } else {
-            change()
-        }
-        Self.resizeSettingsWindow(width: tab.preferredWidth, height: tab.preferredHeight, animate: animate)
+    }
+}
+
+extension NSView {
+    fileprivate var descendantSplitViews: [NSSplitView] {
+        let current = (self as? NSSplitView).map { [$0] } ?? []
+        return current + self.subviews.flatMap(\.descendantSplitViews)
+    }
+}
+
+@MainActor
+struct SettingsWindowAppearanceBridge: NSViewRepresentable {
+    let colorScheme: ColorScheme
+
+    func makeNSView(context: Context) -> SettingsWindowAppearanceView {
+        SettingsWindowAppearanceView()
     }
 
-    private static let settingsWindowIdentifier = "com_apple_SwiftUI_Settings_window"
-    private static let knownTabTitles = Set(PreferencesTab.allCases.map(\.title))
+    func updateNSView(_ nsView: SettingsWindowAppearanceView, context: Context) {
+        nsView.refreshWindowAppearance(for: self.colorScheme)
+    }
+}
 
-    private static func resizeSettingsWindow(width: CGFloat, height: CGFloat, animate: Bool) {
-        guard let window = NSApp.windows.first(where: {
-            $0.identifier?.rawValue == settingsWindowIdentifier
-                || knownTabTitles.contains($0.title)
-        }) else { return }
-        let toolbarHeight = window.frame.height - window.contentLayoutRect.height
-        guard toolbarHeight > 0 else { return }
-        let newSize = NSSize(width: width, height: height + toolbarHeight)
-        var frame = window.frame
-        frame.origin.y += frame.size.height - newSize.height
-        frame.size = newSize
-        window.setFrame(frame, display: true, animate: animate)
+@MainActor
+final class SettingsWindowAppearanceView: NSView {
+    private let scheduleReset: SettingsWindowAppearance.ResetScheduler
+    private var colorScheme: ColorScheme?
+
+    init(scheduleReset: @escaping SettingsWindowAppearance.ResetScheduler = SettingsWindowAppearance.scheduleReset) {
+        self.scheduleReset = scheduleReset
+        super.init(frame: .zero)
     }
 
-    private func ensureValidTabSelection() {
-        if !self.settings.debugMenuEnabled, self.selection.tab == .debug {
-            self.selection.tab = .general
-            self.updateLayout(for: .general, animate: true)
-        }
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        self.refreshWindowAppearance()
+    }
+
+    func refreshWindowAppearance(for colorScheme: ColorScheme) {
+        guard self.colorScheme != colorScheme else { return }
+        self.colorScheme = colorScheme
+        self.refreshWindowAppearance()
+    }
+
+    private func refreshWindowAppearance() {
+        guard let window else { return }
+        SettingsWindowAppearance.refresh(window, scheduleReset: self.scheduleReset)
     }
 }

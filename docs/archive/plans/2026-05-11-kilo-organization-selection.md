@@ -1,3 +1,11 @@
+---
+summary: "Implementation plan for Kilo organization selection and stacked organization usage cards."
+read_when:
+  - Implementing Kilo organization selection
+  - Updating Kilo organization-scoped usage fetching
+  - Planning stacked Kilo personal and organization menu cards
+---
+
 # Kilo Organization Selection Implementation Plan
 
 

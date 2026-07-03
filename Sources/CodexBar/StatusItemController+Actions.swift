@@ -32,7 +32,45 @@ extension StatusItemController: StatusItemMenuPersistentActionDelegate {
     {
         await ProviderInteractionContext.$current.withValue(interaction) {
             await self.store.refresh(forceTokenUsage: forceTokenUsage)
+            guard !Task.isCancelled, !self.hasPreparedForAppShutdown else { return }
             self.store.scheduleStorageFootprintRefreshForOverview(force: true)
+            if refreshOpenMenusWhenComplete {
+                self.refreshOpenMenusAfterExplicitStoreAction()
+            } else {
+                self.invalidateMenus()
+            }
+        }
+    }
+
+    func performStoreRefresh(
+        for provider: UsageProvider,
+        refreshOpenMenusWhenComplete: Bool,
+        interaction: ProviderInteraction) async
+    {
+        await ProviderInteractionContext.$current.withValue(interaction) {
+            let refreshStartedAt = Date()
+            await self.store.refreshProvider(provider)
+            guard !Task.isCancelled, !self.hasPreparedForAppShutdown else { return }
+            await self.store.refreshProviderStatus(provider)
+            guard !Task.isCancelled, !self.hasPreparedForAppShutdown else { return }
+            await self.store.refreshTokenUsageNow(for: provider, force: true)
+            guard !Task.isCancelled, !self.hasPreparedForAppShutdown else { return }
+            if provider == .codex {
+                await self.store.refreshCreditsNow(minimumSnapshotUpdatedAt: refreshStartedAt)
+                guard !Task.isCancelled, !self.hasPreparedForAppShutdown else { return }
+                await self.store.refreshOpenAIDashboardIfNeeded(
+                    force: true,
+                    expectedGuard: self.store.freshCodexOpenAIWebRefreshGuard())
+                guard !Task.isCancelled, !self.hasPreparedForAppShutdown else { return }
+                if self.store.openAIDashboardRequiresLogin {
+                    await self.store.refreshProvider(.codex)
+                    guard !Task.isCancelled, !self.hasPreparedForAppShutdown else { return }
+                    await self.store.refreshCreditsNow(minimumSnapshotUpdatedAt: refreshStartedAt)
+                    guard !Task.isCancelled, !self.hasPreparedForAppShutdown else { return }
+                }
+            }
+            self.store.scheduleStorageFootprintRefresh(for: [provider], force: true)
+            self.store.persistWidgetSnapshot(reason: "provider-refresh")
             if refreshOpenMenusWhenComplete {
                 self.refreshOpenMenusAfterExplicitStoreAction()
             } else {
@@ -48,12 +86,112 @@ extension StatusItemController: StatusItemMenuPersistentActionDelegate {
     }
 
     @objc func refreshNow() {
-        self.refreshStore(forceTokenUsage: true)
+        self.startManualRefresh(for: nil)
     }
 
-    nonisolated func performPersistentRefreshAction() {
+    @objc func refreshMenuItem(_ sender: NSMenuItem) {
+        self.refreshMenuProviderNow(in: sender.menu)
+    }
+
+    func refreshMenuProviderNow(in menu: NSMenu?) {
+        guard let provider = self.manualRefreshProvider(for: menu) else {
+            self.startManualRefresh(for: nil)
+            return
+        }
+        self.startManualRefresh(for: provider)
+    }
+
+    private func refreshMenuProviderNow(menuID: ObjectIdentifier) {
+        if let menu = self.openMenus[menuID] {
+            self.refreshMenuProviderNow(in: menu)
+        } else if let mergedMenu = self.mergedMenu, ObjectIdentifier(mergedMenu) == menuID {
+            self.refreshMenuProviderNow(in: mergedMenu)
+        } else if let provider = self.menuProviders[menuID] {
+            self.startManualRefresh(for: provider)
+        } else {
+            self.startManualRefresh(for: nil)
+        }
+    }
+
+    private func startManualRefresh(for provider: UsageProvider?) {
+        let scopedRefreshInFlight = provider.map { self.store.refreshingProviders.contains($0) }
+            ?? !self.store.refreshingProviders.isEmpty
+        guard !self.hasPreparedForAppShutdown,
+              self.manualRefreshTask == nil,
+              !self.store.isRefreshing,
+              !scopedRefreshInFlight
+        else { return }
+
+        let frozenModels = self.frozenManualRefreshMenuCardModels()
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                self.manualRefreshTask = nil
+                self.manualRefreshProvider = nil
+                self.menuCardRefreshMonitor.endManualRefresh()
+                self.updatePersistentRefreshItemsEnabled()
+                self.prepareAttachedClosedMenusIfNeeded()
+            }
+            guard !Task.isCancelled, !self.hasPreparedForAppShutdown else { return }
+            #if DEBUG
+            if let operation = self._test_manualRefreshOperation {
+                await operation()
+                guard !Task.isCancelled, !self.hasPreparedForAppShutdown else { return }
+                return
+            }
+            #endif
+            if let provider {
+                await self.performStoreRefresh(
+                    for: provider,
+                    refreshOpenMenusWhenComplete: true,
+                    interaction: .userInitiated)
+            } else {
+                await self.performStoreRefresh(
+                    forceTokenUsage: true,
+                    refreshOpenMenusWhenComplete: true,
+                    interaction: .userInitiated)
+            }
+        }
+        self.manualRefreshProvider = provider
+        self.manualRefreshTask = task
+        self.menuCardRefreshMonitor.beginManualRefresh(frozenModels: frozenModels, provider: provider)
+        self.updatePersistentRefreshItemsEnabled()
+    }
+
+    private func manualRefreshProvider(for menu: NSMenu?) -> UsageProvider? {
+        guard let menu else { return nil }
+        if self.shouldMergeIcons {
+            guard self.mergedMenu == nil || menu === self.mergedMenu else { return nil }
+            guard !self.isMergedOverviewSelected(in: menu) else { return nil }
+            return self.resolvedMenuProvider()
+        }
+        return self.menuProviders[ObjectIdentifier(menu)]
+    }
+
+    private func frozenManualRefreshMenuCardModels() -> [UsageProvider: UsageMenuCardView.Model] {
+        var providers = self.store.enabledProvidersForDisplay()
+        if let lastMenuProvider,
+           !providers.contains(lastMenuProvider)
+        {
+            providers.append(lastMenuProvider)
+        }
+        if providers.isEmpty,
+           let defaultProvider = self.settings.orderedProviders().first ?? UsageProvider.allCases.first
+        {
+            providers.append(defaultProvider)
+        }
+
+        var models: [UsageProvider: UsageMenuCardView.Model] = [:]
+        for provider in providers {
+            models[provider] = self.menuCardModel(for: provider)
+        }
+        return models
+    }
+
+    nonisolated func performPersistentRefreshAction(in menuID: ObjectIdentifier) {
         Task { @MainActor [weak self] in
-            self?.refreshNow()
+            guard let self else { return }
+            self.refreshMenuProviderNow(menuID: menuID)
         }
     }
 
@@ -103,7 +241,10 @@ extension StatusItemController: StatusItemMenuPersistentActionDelegate {
         NSWorkspace.shared.open(url)
     }
 
-    func dashboardURL(for provider: UsageProvider) -> URL? {
+    func dashboardURL(
+        for provider: UsageProvider,
+        environment: [String: String] = ProcessInfo.processInfo.environment) -> URL?
+    {
         if provider == .alibaba {
             return self.settings.alibabaCodingPlanAPIRegion.dashboardURL
         }
@@ -113,6 +254,19 @@ extension StatusItemController: StatusItemMenuPersistentActionDelegate {
 
         if provider == .opencodego {
             return self.settings.opencodegoDashboardURL
+        }
+
+        if provider == .zai {
+            return ZaiUsageFetcher.resolveDashboardURL(
+                region: self.settings.zaiAPIRegion,
+                environment: environment,
+                usageScope: self.settings.zaiEffectiveUsageScope())
+        }
+
+        if provider == .qoder {
+            return QoderProviderDescriptor.dashboardURL(
+                settings: self.settings.qoderSettingsSnapshot(tokenOverride: nil),
+                sourceLabel: self.store.sourceLabel(for: .qoder))
         }
 
         let meta = self.store.metadata(for: provider)
@@ -140,8 +294,21 @@ extension StatusItemController: StatusItemMenuPersistentActionDelegate {
 
         let autoStart = true
         let accountEmail = self.store.codexAccountEmailForOpenAIDashboard()
+        let cacheScope = self.store.codexCookieCacheScopeForOpenAIWeb()
+        guard OpenAICreditsPurchaseWindowController.canOpenPurchaseWindow(
+            accountEmail: accountEmail,
+            cacheScope: cacheScope)
+        else {
+            self.creditsPurchaseWindow?.close()
+            self.creditsPurchaseWindow = nil
+            return
+        }
         let controller = self.creditsPurchaseWindow ?? OpenAICreditsPurchaseWindowController()
-        controller.show(purchaseURL: url, accountEmail: accountEmail, autoStartPurchase: autoStart)
+        controller.show(
+            purchaseURL: url,
+            accountEmail: accountEmail,
+            cacheScope: cacheScope,
+            autoStartPurchase: autoStart)
         self.creditsPurchaseWindow = controller
     }
 
@@ -167,7 +334,17 @@ extension StatusItemController: StatusItemMenuPersistentActionDelegate {
         let preferred = self.lastMenuProvider
             ?? (self.store.isEnabled(.codex) ? .codex : self.store.enabledProviders().first)
 
-        let provider = preferred ?? .codex
+        self.openStatusPage(for: preferred ?? .codex)
+    }
+
+    @objc func openStatusPageFromMenuItem(_ sender: NSMenuItem) {
+        let provider = (sender.identifier?.rawValue).flatMap(UsageProvider.init(rawValue:))
+            ?? self.lastMenuProvider
+            ?? .codex
+        self.openStatusPage(for: provider)
+    }
+
+    private func openStatusPage(for provider: UsageProvider) {
         let meta = self.store.metadata(for: provider)
         let urlString = meta.statusPageURL ?? meta.statusLinkURL
         guard let urlString, let url = URL(string: urlString) else { return }
@@ -263,11 +440,12 @@ extension StatusItemController: StatusItemMenuPersistentActionDelegate {
     }
 
     @objc func showSettingsGeneral() {
-        self.openSettings(tab: .general)
+        // Restore the last selected pane; only About navigates explicitly.
+        self.openSettings(pane: nil)
     }
 
     @objc func showSettingsAbout() {
-        self.openSettings(tab: .about)
+        self.openSettings(pane: .about)
     }
 
     func openMenuFromShortcut() {
@@ -318,14 +496,13 @@ extension StatusItemController: StatusItemMenuPersistentActionDelegate {
         return CGPoint(x: screenFrame.midX, y: screenFrame.midY)
     }
 
-    private func openSettings(tab: PreferencesTab) {
+    private func openSettings(pane: SettingsPane?) {
         DispatchQueue.main.async {
-            self.preferencesSelection.tab = tab
+            if let pane {
+                self.preferencesSelection.pane = pane
+            }
             NSApp.activate(ignoringOtherApps: true)
-            NotificationCenter.default.post(
-                name: .codexbarOpenSettings,
-                object: nil,
-                userInfo: ["tab": tab.rawValue])
+            NotificationCenter.default.post(name: .codexbarOpenSettings, object: nil)
         }
     }
 
@@ -455,13 +632,13 @@ extension StatusItemController: StatusItemMenuPersistentActionDelegate {
                 title: L("Claude CLI not found"),
                 message: L("Install the Claude CLI (npm i -g @anthropic-ai/claude-code) and try again."))
         case let .launchFailed(message):
-            self.presentLoginAlert(title: L("Could not start claude /login"), message: message)
+            self.presentLoginAlert(title: L("Could not start Claude Code login"), message: message)
         case .timedOut:
             self.presentLoginAlert(
                 title: L("Claude login timed out"),
                 message: self.trimmedLoginOutput(result.output))
         case let .failed(status):
-            let statusLine = String(format: L("claude /login exited with status %d."), status)
+            let statusLine = String(format: L("claude auth login exited with status %d."), status)
             let message = self.trimmedLoginOutput(result.output.isEmpty ? statusLine : result.output)
             self.presentLoginAlert(title: L("Claude login failed"), message: message)
         }

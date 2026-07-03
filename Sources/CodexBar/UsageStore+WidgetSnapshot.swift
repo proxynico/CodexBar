@@ -30,11 +30,17 @@ extension UsageStore {
         let entries = UsageProvider.allCases.compactMap { provider in
             self.makeWidgetEntry(for: provider)
         }
-        return WidgetSnapshot(entries: entries, enabledProviders: enabledProviders, generatedAt: Date())
+        return WidgetSnapshot(
+            entries: entries,
+            enabledProviders: enabledProviders,
+            usageBarsShowUsed: self.settings.usageBarsShowUsed,
+            generatedAt: Date())
     }
 
     private func makeWidgetEntry(for provider: UsageProvider) -> WidgetSnapshot.ProviderEntry? {
-        guard let snapshot = self.snapshots[provider] else { return nil }
+        let snapshot = self.snapshots[provider]
+        let storedTokenSnapshot = self.tokenSnapshots[provider]
+        guard snapshot != nil || (provider == .claude && storedTokenSnapshot != nil) else { return nil }
 
         let tokenSnapshot = self.tokenSnapshot(fromProviderSnapshot: snapshot, provider: provider) ?? self
             .tokenSnapshots[provider]
@@ -46,11 +52,11 @@ extension UsageStore {
         } ?? []
 
         let tokenUsage = Self.widgetTokenUsageSummary(from: tokenSnapshot, provider: provider)
-        let usageRows = self.widgetUsageRows(provider: provider, snapshot: snapshot)
+        let usageRows = snapshot.map { self.widgetUsageRows(provider: provider, snapshot: $0) } ?? []
 
         let creditsRemaining: Double?
         let codeReviewRemaining: Double?
-        if provider == .codex {
+        if provider == .codex, let snapshot {
             let projection = self.codexConsumerProjection(
                 surface: .widget,
                 snapshotOverride: snapshot,
@@ -65,10 +71,10 @@ extension UsageStore {
 
         return WidgetSnapshot.ProviderEntry(
             provider: provider,
-            updatedAt: snapshot.updatedAt,
-            primary: snapshot.primary,
-            secondary: snapshot.secondary,
-            tertiary: snapshot.tertiary,
+            updatedAt: snapshot?.updatedAt ?? tokenSnapshot?.updatedAt ?? Date(),
+            primary: snapshot?.primary,
+            secondary: snapshot?.secondary,
+            tertiary: snapshot?.tertiary,
             usageRows: usageRows,
             creditsRemaining: creditsRemaining,
             codeReviewRemainingPercent: codeReviewRemaining,
@@ -119,10 +125,29 @@ extension UsageStore {
                     percentLeft: window.remainingPercent)
             }
         }
+        if provider == .antigravity,
+           let rows = Self.antigravityQuotaSummaryWidgetRows(snapshot: snapshot),
+           !rows.isEmpty
+        {
+            return rows
+        }
+        if provider == .antigravity,
+           snapshot.primary == nil,
+           snapshot.secondary == nil,
+           let rows = Self.antigravityLegacyExtraWidgetRows(snapshot: snapshot),
+           !rows.isEmpty
+        {
+            return rows
+        }
 
         let primaryTitle: String = {
             if provider == .grok,
                let dyn = GrokProviderDescriptor.primaryLabel(window: snapshot.primary)
+            {
+                return dyn
+            }
+            if provider == .doubao,
+               let dyn = DoubaoProviderDescriptor.primaryLabel(window: snapshot.primary)
             {
                 return dyn
             }
@@ -146,5 +171,38 @@ extension UsageStore {
                 percentLeft: snapshot.tertiary?.remainingPercent))
         }
         return rows.filter { $0.percentLeft != nil }
+    }
+
+    private nonisolated static let antigravityQuotaSummaryWindowIDPrefix = "antigravity-quota-summary-"
+    private nonisolated static let antigravityCompactFallbackWindowIDPrefix = "antigravity-compact-fallback-"
+
+    private nonisolated static func antigravityQuotaSummaryWidgetRows(
+        snapshot: UsageSnapshot) -> [WidgetSnapshot.WidgetUsageRowSnapshot]?
+    {
+        guard let windows = snapshot.extraRateWindows?.filter({
+            $0.id.hasPrefix(Self.antigravityQuotaSummaryWindowIDPrefix)
+        }), !windows.isEmpty else {
+            return nil
+        }
+        return windows.map { namedWindow in
+            WidgetSnapshot.WidgetUsageRowSnapshot(
+                id: namedWindow.id,
+                title: namedWindow.title,
+                percentLeft: namedWindow.usageKnown ? namedWindow.window.remainingPercent : nil)
+        }
+    }
+
+    private nonisolated static func antigravityLegacyExtraWidgetRows(
+        snapshot: UsageSnapshot) -> [WidgetSnapshot.WidgetUsageRowSnapshot]?
+    {
+        let windows = snapshot.extraRateWindows?
+            .filter { $0.id.hasPrefix(Self.antigravityCompactFallbackWindowIDPrefix) && $0.usageKnown }
+        guard let windows, !windows.isEmpty else { return nil }
+        return windows.map { namedWindow in
+            WidgetSnapshot.WidgetUsageRowSnapshot(
+                id: namedWindow.id,
+                title: namedWindow.title,
+                percentLeft: namedWindow.window.remainingPercent)
+        }
     }
 }

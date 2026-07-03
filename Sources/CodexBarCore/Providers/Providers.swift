@@ -16,6 +16,7 @@ public enum UsageProvider: String, CaseIterable, Sendable, Codable {
     case gemini
     case antigravity
     case copilot
+    case devin
     case zai
     case minimax
     case manus
@@ -35,9 +36,11 @@ public enum UsageProvider: String, CaseIterable, Sendable, Codable {
     case openrouter
     case elevenlabs
     case windsurf
+    case zed
     case perplexity
     case mimo
     case doubao
+    case sakana
     case abacus
     case mistral
     case deepseek
@@ -45,12 +48,17 @@ public enum UsageProvider: String, CaseIterable, Sendable, Codable {
     case crof
     case venice
     case commandcode
+    case qoder
     case stepfun
     case bedrock
     case grok
     case groq
     case llmproxy
+    case litellm
     case deepgram
+    case poe
+    case chutes
+    case crossmodel
 }
 
 // swiftformat:enable sortDeclarations
@@ -70,6 +78,7 @@ public enum IconStyle: String, Sendable, CaseIterable {
     case alibaba
     case factory
     case copilot
+    case devin
     case kimi
     case kimik2
     case kilo
@@ -86,9 +95,11 @@ public enum IconStyle: String, Sendable, CaseIterable {
     case openrouter
     case elevenlabs
     case windsurf
+    case zed
     case perplexity
     case mimo
     case doubao
+    case sakana
     case abacus
     case mistral
     case deepseek
@@ -96,12 +107,17 @@ public enum IconStyle: String, Sendable, CaseIterable {
     case crof
     case venice
     case commandcode
+    case qoder
     case stepfun
     case bedrock
     case grok
     case groq
     case llmproxy
+    case litellm
     case deepgram
+    case poe
+    case chutes
+    case crossmodel
     case combined
 }
 
@@ -227,6 +243,35 @@ public enum ProviderBrowserCookieDefaults {
     public static var mimoCookieImportOrder: BrowserCookieImportOrder? {
         #if os(macOS)
         [.safari, .chrome, .chromeBeta, .chromeCanary, .firefox, .edge]
+        #else
+        nil
+        #endif
+    }
+
+    /// Devin sessions are normally in Chrome. Keep automatic import narrow so live probes do not
+    /// touch unrelated browser keychains; users can select another browser explicitly.
+    public static var devinCookieImportOrder: BrowserCookieImportOrder? {
+        #if os(macOS)
+        [.chrome]
+        #else
+        nil
+        #endif
+    }
+
+    /// Copilot budget imports should stay Chrome-only by default to avoid prompting unrelated browsers.
+    public static var copilotCookieImportOrder: BrowserCookieImportOrder? {
+        #if os(macOS)
+        [.chrome]
+        #else
+        nil
+        #endif
+    }
+
+    /// Qoder sessions are documented through Chrome cookie import. Keep automatic import narrow
+    /// so enabling this provider does not probe unrelated browser keychains.
+    public static var qoderCookieImportOrder: BrowserCookieImportOrder? {
+        #if os(macOS)
+        [.chrome]
         #else
         nil
         #endif

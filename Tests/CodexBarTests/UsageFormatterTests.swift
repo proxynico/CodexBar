@@ -10,12 +10,23 @@ struct UsageFormatterTests {
         "Resets %@",
         "Resets in %@",
         "Resets now",
+        "reset_tomorrow_format",
         "Updated %@",
+        "Updated relative %@",
+        "Updated absolute %@",
         "Updated %@h ago",
         "Updated %@m ago",
         "Updated just now",
         "usage_percent_suffix_left",
         "usage_percent_suffix_used",
+        "byte_unit_byte",
+        "byte_unit_bytes",
+        "byte_unit_kilobyte",
+        "byte_unit_kilobytes",
+        "byte_unit_megabyte",
+        "byte_unit_megabytes",
+        "byte_unit_gigabyte",
+        "byte_unit_gigabytes",
     ]
 
     @Test
@@ -35,9 +46,26 @@ struct UsageFormatterTests {
     }
 
     @Test
+    func `positive sub percent usage stays visible`() {
+        #expect(UsageFormatter.percentString(-1) == "0%")
+        #expect(UsageFormatter.percentString(0) == "0%")
+        #expect(UsageFormatter.percentString(0.1) == "<1%")
+        #expect(UsageFormatter.percentString(0.96) == "<1%")
+        #expect(UsageFormatter.percentString(1) == "1%")
+        #expect(UsageFormatter.percentString(101) == "100%")
+        #expect(UsageFormatter.usageLine(remaining: 99.9, used: 0.1, showUsed: true) == "<1% used")
+
+        let usedWindow = RateWindow(usedPercent: 0.1, windowMinutes: nil, resetsAt: nil, resetDescription: nil)
+        let leftWindow = RateWindow(usedPercent: 99.9, windowMinutes: nil, resetsAt: nil, resetDescription: nil)
+        #expect(MenuBarDisplayText.percentText(window: usedWindow, showUsed: true) == "<1%")
+        #expect(MenuBarDisplayText.percentText(window: leftWindow, showUsed: false) == "<1%")
+    }
+
+    @Test
     func `usage line respects injected localization provider`() {
         UsageFormatter.setLocalizationProvider { key in
             switch key {
+            case "%.0f%% %@": "%2$@ %1$.0f%%"
             case "usage_percent_suffix_left": "剩余"
             case "usage_percent_suffix_used": "已使用"
             default: key
@@ -45,8 +73,8 @@ struct UsageFormatterTests {
         }
         defer { UsageFormatter.clearLocalizationProvider() }
 
-        #expect(UsageFormatter.usageLine(remaining: 22, used: 78, showUsed: false) == "22% 剩余")
-        #expect(UsageFormatter.usageLine(remaining: 22, used: 78, showUsed: true) == "78% 已使用")
+        #expect(UsageFormatter.usageLine(remaining: 22, used: 78, showUsed: false) == "剩余 22%")
+        #expect(UsageFormatter.usageLine(remaining: 22, used: 78, showUsed: true) == "已使用 78%")
     }
 
     @Test
@@ -69,7 +97,7 @@ struct UsageFormatterTests {
     func `injected zh Hans locale applies app language formatting`() {
         UsageFormatter.setLocalizationProvider { key in
             switch key {
-            case "Updated %@":
+            case "Updated absolute %@":
                 "更新于 %@"
             default:
                 key
@@ -89,6 +117,30 @@ struct UsageFormatterTests {
     }
 
     @Test
+    func `injected zh Hant relative updated string can place updated after relative time`() {
+        UsageFormatter.setLocalizationProvider { key in
+            switch key {
+            case "Updated relative %@":
+                "%@已更新"
+            default:
+                key
+            }
+        }
+        UsageFormatter.setLocaleProvider { Locale(identifier: "zh-Hant") }
+        defer {
+            UsageFormatter.clearLocalizationProvider()
+            UsageFormatter.clearLocaleProvider()
+        }
+
+        let now = Date(timeIntervalSince1970: 1_710_048_000)
+        let old = now.addingTimeInterval(-(5 * 3600))
+        let output = UsageFormatter.updatedString(from: old, now: now)
+
+        #expect(output.hasSuffix("已更新"))
+        #expect(!output.hasPrefix("已更新"))
+    }
+
+    @Test
     func `clearing locale provider returns to stable default behavior`() {
         UsageFormatter.clearLocalizationProvider()
         UsageFormatter.clearLocaleProvider()
@@ -103,6 +155,29 @@ struct UsageFormatterTests {
 
         let restored = UsageFormatter.updatedString(from: old, now: now)
         #expect(restored == baseline)
+    }
+
+    @Test
+    func `tomorrow reset description uses localized format`() throws {
+        UsageFormatter.setLocalizationProvider { key in
+            key == "reset_tomorrow_format" ? "明日 %@" : key
+        }
+        UsageFormatter.setLocaleProvider { Locale(identifier: "ja_JP") }
+        defer {
+            UsageFormatter.clearLocalizationProvider()
+            UsageFormatter.clearLocaleProvider()
+        }
+
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date(timeIntervalSince1970: 1_750_000_000))
+        let now = try #require(calendar.date(byAdding: .hour, value: 12, to: today))
+        let tomorrow = try #require(calendar.date(byAdding: .day, value: 1, to: today))
+        let reset = try #require(calendar.date(byAdding: .minute, value: 10 * 60 + 50, to: tomorrow))
+
+        let output = UsageFormatter.resetDescription(from: reset, now: now)
+        #expect(output.hasPrefix("明日 "))
+        #expect(!output.contains("tomorrow"))
+        #expect(!output.contains("%@"))
     }
 
     @Test
@@ -204,6 +279,13 @@ struct UsageFormatterTests {
             UsageFormatter.modelCostDetail("gpt-5.3-codex-spark", costUSD: 0, totalTokens: 1500)
                 == "Research Preview · 1.5K")
         #expect(UsageFormatter.modelCostDetail("custom-model", costUSD: nil, totalTokens: 987) == "987")
+    }
+
+    @Test
+    func `token count string formats small values without grouping`() {
+        #expect(UsageFormatter.tokenCountString(0) == "0")
+        #expect(UsageFormatter.tokenCountString(987) == "987")
+        #expect(UsageFormatter.tokenCountString(-42) == "-42")
     }
 
     @Test
@@ -320,6 +402,23 @@ struct UsageFormatterTests {
         #expect(UsageFormatter.byteCountString(10 * 1024) == "10 KB")
         #expect(UsageFormatter.byteCountString(5 * 1024 * 1024) == "5 MB")
         #expect(UsageFormatter.byteCountString(Int64(1536 * 1024 * 1024)) == "1.5 GB")
+        #expect(UsageFormatter.byteCountString(.min) == "-8589934592 GB")
+    }
+
+    @Test
+    func `long byte count string localizes units and handles boundaries`() {
+        UsageFormatter.clearLocalizationProvider()
+        #expect(UsageFormatter.byteCountStringLong(1024 * 1024) == "1 megabyte")
+
+        UsageFormatter.setLocalizationProvider { "[\($0)]" }
+        defer { UsageFormatter.clearLocalizationProvider() }
+
+        #expect(UsageFormatter.byteCountStringLong(1) == "1 [byte_unit_byte]")
+        #expect(UsageFormatter.byteCountStringLong(2) == "2 [byte_unit_bytes]")
+        #expect(UsageFormatter.byteCountStringLong(1536) == "1.5 [byte_unit_kilobytes]")
+        #expect(UsageFormatter.byteCountStringLong(1024 * 1024) == "1 [byte_unit_megabyte]")
+        #expect(UsageFormatter.byteCountStringLong(1024 * 1024 + 1) == "1.0 [byte_unit_megabyte]")
+        #expect(UsageFormatter.byteCountStringLong(.min) == "-8589934592 [byte_unit_gigabytes]")
     }
 
     @Test

@@ -1,10 +1,8 @@
 import AppKit
 import CodexBarCore
-import CodexBarMacroSupport
 import Foundation
 import SwiftUI
 
-@ProviderImplementationRegistration
 struct AlibabaTokenPlanProviderImplementation: ProviderImplementation {
     let id: UsageProvider = .alibabatokenplan
 
@@ -57,9 +55,7 @@ struct AlibabaTokenPlanProviderImplementation: ProviderImplementation {
                 isVisible: nil,
                 onChange: nil,
                 trailingText: {
-                    guard let entry = CookieHeaderCache.load(provider: .alibabatokenplan) else { return nil }
-                    let when = entry.storedAt.relativeDescription()
-                    return "Cached: \(entry.sourceLabel) • \(when)"
+                    ProviderCookieSourceUI.cachedTrailingText(provider: .alibabatokenplan)
                 }),
         ]
     }

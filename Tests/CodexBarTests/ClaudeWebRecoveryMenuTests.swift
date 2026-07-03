@@ -6,6 +6,13 @@ import Testing
 @MainActor
 @Suite(.serialized)
 struct ClaudeWebRecoveryMenuTests {
+    @Test
+    func `unauthorized error explains how to restore web usage`() {
+        #expect(
+            ClaudeWebAPIFetcher.FetchError.unauthorized.localizedDescription ==
+                "Sign in to claude.ai (or refresh Claude cookies) to load usage data.")
+    }
+
     private func makeSettings() -> SettingsStore {
         let suite = "ClaudeWebRecoveryMenuTests-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
@@ -18,7 +25,7 @@ struct ClaudeWebRecoveryMenuTests {
     }
 
     private func actions(
-        error: String,
+        error: String? = nil,
         source: ClaudeUsageDataSource,
         cookieSource: ProviderCookieSource = .auto,
         selectedSessionKey: Bool = false,
@@ -50,6 +57,18 @@ struct ClaudeWebRecoveryMenuTests {
                 guard case let .action(label, action) = entry else { return nil }
                 return (label, action)
             }
+    }
+
+    @Test
+    func `default account action localizes ambient Claude Code sign in`() {
+        let actions = CodexBarLocalizationOverride.$appLanguage.withValue("zh-Hant") {
+            self.actions(source: .auto)
+        }
+
+        #expect(actions.contains {
+            $0.0 == "使用 Claude Code 登入…" && $0.1 == .switchAccount(.claude)
+        })
+        #expect(!actions.contains { $0.0 == "Add Account..." })
     }
 
     @Test
