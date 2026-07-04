@@ -503,7 +503,7 @@ struct StatusMenuPersistentRefreshTests {
     }
 
     @Test
-    func `manual refresh uses fallback when empty quota gains credit content`() throws {
+    func `manual refresh keeps frozen quota when codex credit content stays hidden`() throws {
         let settings = self.makeSettings()
         let controller = self.makeController(
             settings: settings,
@@ -533,8 +533,8 @@ struct StatusMenuPersistentRefreshTests {
 
         #expect(frozen.metrics.count == 1)
         #expect(fallback.metrics.isEmpty)
-        #expect(fallback.creditsText != nil)
-        #expect(inFlight.metrics.isEmpty)
+        #expect(fallback.creditsText == nil)
+        #expect(inFlight.metrics.map(\.id) == frozen.metrics.map(\.id))
         #expect(inFlight.creditsText == fallback.creditsText)
     }
 
@@ -566,7 +566,7 @@ struct StatusMenuPersistentRefreshTests {
     }
 
     @Test
-    func `refresh monitor updates single line credit balances`() throws {
+    func `refresh monitor keeps hidden codex credit balances hidden`() throws {
         let settings = self.makeSettings()
         let controller = self.makeController(
             settings: settings,
@@ -589,8 +589,9 @@ struct StatusMenuPersistentRefreshTests {
             updatedAt: now.addingTimeInterval(1))
         let refreshed = controller.menuCardRefreshMonitor.model(for: .codex, fallback: fallback)
 
-        #expect(refreshed.creditsRemaining == 42)
-        #expect(refreshed.creditsText != fallback.creditsText)
+        #expect(fallback.creditsRemaining == nil)
+        #expect(refreshed.creditsRemaining == nil)
+        #expect(refreshed.creditsText == fallback.creditsText)
     }
 
     @Test

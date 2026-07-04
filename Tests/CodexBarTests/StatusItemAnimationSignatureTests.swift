@@ -138,8 +138,8 @@ struct StatusItemAnimationSignatureTests {
 
         #expect(signature.contains("provider=antigravity"))
         #expect(signature.contains("style=combined"))
-        #expect(signature.contains("primary=98.000"))
-        #expect(signature.contains("weekly=1.000"))
+        #expect(signature.contains("primary=980"))
+        #expect(signature.contains("weekly=10"))
     }
 
     @Test

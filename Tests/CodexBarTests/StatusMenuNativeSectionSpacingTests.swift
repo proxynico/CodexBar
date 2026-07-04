@@ -78,13 +78,13 @@ struct StatusMenuNativeSectionSpacingTests {
         let storageIndex = try #require(menu.items.firstIndex {
             ($0.representedObject as? String) == "menuCardStorage"
         })
-        let creditsIndex = try #require(menu.items.firstIndex {
+        let creditsIndex = menu.items.firstIndex {
             ($0.representedObject as? String) == "menuCardCredits"
-        })
+        }
         let costIndex = try #require(menu.items.firstIndex {
             ($0.representedObject as? String) == "menuCardCost"
         })
-        #expect(creditsIndex < usageHistoryIndex)
+        #expect(creditsIndex == nil)
         #expect(usageHistoryIndex < costIndex)
         #expect(costIndex < storageIndex)
         #expect(menu.items[usageHistoryIndex].title == "Plan Usage")
