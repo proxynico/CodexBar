@@ -207,7 +207,7 @@ struct CodexUserFacingErrorTests {
     }
 
     @Test
-    func `menu card hides optional codex setup diagnostics kept by providers pane`() throws {
+    func `codex cards hide optional credit diagnostics while providers pane keeps web diagnostics`() throws {
         let settings = self.makeSettingsStore(suite: "CodexUserFacingErrorTests-menu-diagnostics")
         let store = self.makeUsageStore(settings: settings)
         store.lastCreditsError = UsageError.noRateLimitsFound.errorDescription
@@ -231,8 +231,7 @@ struct CodexUserFacingErrorTests {
 
         #expect(menuModel.creditsText == nil)
         #expect(menuModel.creditsHintText == nil)
-        #expect(settingsModel.creditsText == UsageError.noRateLimitsFound.errorDescription)
-        #expect(settingsModel.creditsHintText?.contains("No matching OpenAI web session found") == true)
+        #expect(settingsModel.creditsText == nil)
         #expect(settingsInfoRows.contains { row in
             row.id == .openAIWeb && row.value.contains("No matching OpenAI web session found")
         })
