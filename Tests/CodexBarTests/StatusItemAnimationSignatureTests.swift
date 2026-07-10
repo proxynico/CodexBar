@@ -194,7 +194,7 @@ struct StatusItemAnimationSignatureTests {
         let signature = try #require(controller.lastAppliedMergedIconRenderSignature)
 
         #expect(signature.contains("provider=mistral"))
-        #expect(signature.contains("primary=42.000"))
+        #expect(signature.contains("primary=420"))
         #expect(signature.contains("weekly=nil"))
     }
 
