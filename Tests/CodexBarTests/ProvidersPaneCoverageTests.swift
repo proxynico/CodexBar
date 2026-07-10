@@ -245,7 +245,7 @@ struct ProvidersPaneCoverageTests {
             ])
             #expect(picker?.options.first?.title == "Pay-as-you-go")
             #expect(picker?.options.last?.title == "Monthly Plan")
-            #expect(picker?.subtitle == "Shows current-month Mistral API spend in the menu bar.")
+            #expect(picker?.subtitle == "Choose Mistral API spend or Monthly Plan usage for the menu bar.")
         }
     }
 
@@ -261,6 +261,27 @@ struct ProvidersPaneCoverageTests {
                 MenuBarMetricPreference.automatic.rawValue,
             ])
             #expect(picker?.subtitle == "Shows Kimi K2 API-key credits in the menu bar.")
+        }
+    }
+
+    @Test
+    func `kimi menu bar metric picker preserves stored lane labels`() {
+        Self.withEnglishLocalization {
+            let settings = Self.makeSettingsStore(suite: "ProvidersPaneCoverageTests-kimi-picker")
+            let store = Self.makeUsageStore(settings: settings)
+            let pane = ProvidersPane(settings: settings, store: store)
+
+            let picker = pane._test_menuBarMetricPicker(for: .kimi)
+            #expect(picker?.options.map(\.id) == [
+                MenuBarMetricPreference.automatic.rawValue,
+                MenuBarMetricPreference.primary.rawValue,
+                MenuBarMetricPreference.secondary.rawValue,
+            ])
+            #expect(picker?.options.map(\.title) == [
+                "Automatic",
+                "Primary (Weekly)",
+                "Secondary (Rate Limit)",
+            ])
         }
     }
 
