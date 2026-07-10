@@ -7,7 +7,7 @@ import Testing
 @Suite(.serialized)
 struct StatusMenuNativeSectionSpacingTests {
     @Test
-    func `buy credits stays available without an error only credits section`() {
+    func `credits history can remain available without codex credit actions`() {
         let previousRendering = StatusItemController.menuCardRenderingEnabled
         StatusItemController.menuCardRenderingEnabled = true
         defer { StatusItemController.menuCardRenderingEnabled = previousRendering }
@@ -51,7 +51,7 @@ struct StatusMenuNativeSectionSpacingTests {
         controller.menuWillOpen(menu)
 
         #expect(menu.items.contains { ($0.representedObject as? String) == "menuCardCredits" } == false)
-        #expect(menu.items.contains { $0.title == "Buy Credits..." })
+        #expect(menu.items.contains { $0.title == "Buy Credits..." } == false)
         #expect(menu.items.contains { item in
             item.submenu?.items.contains { ($0.representedObject as? String) == "creditsHistoryChart" } == true
         })
