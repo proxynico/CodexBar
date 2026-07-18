@@ -799,6 +799,17 @@ enum IconRenderer {
         return Int((clamped * 10).rounded())
     }
 
+    /// Matches render cache granularity so signatures change only when the image can change.
+    static func iconSignaturePercentBucket(_ value: Double?) -> String {
+        guard value != nil else { return "nil" }
+        return String(self.quantizedPercent(value))
+    }
+
+    static func iconSignatureCreditsBucket(_ value: Double?) -> String {
+        guard value != nil else { return "nil" }
+        return String(self.quantizedCredits(value))
+    }
+
     private static let styleKeyLookup: [IconStyle: Int] = {
         var lookup: [IconStyle: Int] = [:]
         for (index, style) in IconStyle.allCases.enumerated() {

@@ -610,7 +610,7 @@ struct MenuCardModelCodexProjectionTests {
     }
 
     @Test
-    func `renders codex spark as a named extra metric after the core lanes`() throws {
+    func `hides codex spark extra metrics from the codex card`() throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let metadata = try #require(ProviderDefaults.metadata[.codex])
         let identity = ProviderIdentitySnapshot(
@@ -684,26 +684,10 @@ struct MenuCardModelCodexProjectionTests {
             hidePersonalInfo: false,
             now: now))
 
-        let spark = try #require(model.metrics.first { $0.id == "codex-spark" })
-        #expect(spark.title == "Codex Spark 5-hour")
-        #expect(spark.percent == 20)
-        #expect(spark.percentLabel == "20% left")
-        #expect(spark.resetText != nil)
-        #expect(spark.detailLeftText == "20% in deficit")
-        #expect(spark.detailRightText == "Projected empty in 45m")
-        let sparkWeekly = try #require(model.metrics.first { $0.id == "codex-spark-weekly" })
-        #expect(sparkWeekly.title == "Codex Spark Weekly")
-        #expect(sparkWeekly.percent == 0)
-        #expect(sparkWeekly.percentLabel == "0% left")
-        #expect(sparkWeekly.resetText != nil)
-        #expect(sparkWeekly.detailLeftText == nil)
-        #expect(sparkWeekly.detailRightText == nil)
-        // Spark trails the core session/weekly lanes rather than replacing them.
-        let sparkIndex = try #require(model.metrics.firstIndex { $0.id == "codex-spark" })
-        let sparkWeeklyIndex = try #require(model.metrics.firstIndex { $0.id == "codex-spark-weekly" })
-        let sessionIndex = try #require(model.metrics.firstIndex { $0.id == "primary" })
-        #expect(sparkIndex > sessionIndex)
-        #expect(sparkWeeklyIndex > sparkIndex)
+        #expect(!model.metrics.contains { $0.id == "codex-spark" })
+        #expect(!model.metrics.contains { $0.id == "codex-spark-weekly" })
+        #expect(model.metrics.contains { $0.id == "primary" })
+        #expect(model.metrics.contains { $0.id == "secondary" })
     }
 
     @Test
@@ -761,7 +745,7 @@ struct MenuCardModelCodexProjectionTests {
 
 struct MenuCardModelCodexSparkVisibilityTests {
     @Test
-    func `codex spark visibility hides only spark metrics`() throws {
+    func `codex card hides optional extras when spark visibility is disabled`() throws {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let metadata = try #require(ProviderDefaults.metadata[.codex])
         let identity = ProviderIdentitySnapshot(
@@ -848,8 +832,8 @@ struct MenuCardModelCodexSparkVisibilityTests {
         #expect(!model.metrics.contains { $0.id == "codex-spark-weekly" })
         #expect(model.metrics.contains { $0.id == "primary" })
         #expect(model.metrics.contains { $0.id == "secondary" })
-        #expect(model.metrics.contains { $0.id == "codex-other-limit" })
-        #expect(model.creditsText != nil)
+        #expect(!model.metrics.contains { $0.id == "codex-other-limit" })
+        #expect(model.creditsText == nil)
 
         let globalOffModel = UsageMenuCardView.Model.make(.init(
             provider: .codex,

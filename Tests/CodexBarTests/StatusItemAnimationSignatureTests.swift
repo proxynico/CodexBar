@@ -138,8 +138,8 @@ struct StatusItemAnimationSignatureTests {
 
         #expect(signature.contains("provider=antigravity"))
         #expect(signature.contains("style=combined"))
-        #expect(signature.contains("primary=98.000"))
-        #expect(signature.contains("weekly=1.000"))
+        #expect(signature.contains("primary=980"))
+        #expect(signature.contains("weekly=10"))
     }
 
     @Test
@@ -194,8 +194,19 @@ struct StatusItemAnimationSignatureTests {
         let signature = try #require(controller.lastAppliedMergedIconRenderSignature)
 
         #expect(signature.contains("provider=mistral"))
-        #expect(signature.contains("primary=42.000"))
+        #expect(signature.contains("primary=420"))
         #expect(signature.contains("weekly=nil"))
+    }
+
+    @Test
+    func `icon signatures use renderer cache buckets`() {
+        #expect(IconRenderer.iconSignaturePercentBucket(nil) == "nil")
+        #expect(IconRenderer.iconSignaturePercentBucket(42.01) == "420")
+        #expect(IconRenderer.iconSignaturePercentBucket(42.04) == "420")
+        #expect(IconRenderer.iconSignaturePercentBucket(42.06) == "421")
+        #expect(IconRenderer.iconSignatureCreditsBucket(12.01) == "120")
+        #expect(IconRenderer.iconSignatureCreditsBucket(12.04) == "120")
+        #expect(IconRenderer.iconSignatureCreditsBucket(12.06) == "121")
     }
 
     @Test

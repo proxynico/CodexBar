@@ -643,17 +643,16 @@ extension UsageMenuCardView.Model {
         percentStyle: PercentStyle) -> [Metric]
     {
         guard let extraRateWindows = snapshot.extraRateWindows else { return [] }
-        // Codex additional limits (e.g. Codex Spark) are optional extra usage and follow the
-        // "optional credits and extra usage" setting. Other providers' extra windows (Antigravity
-        // per-model quotas, Factory core windows, etc.) are core data and must always render.
-        if input.provider == .codex, !input.showOptionalCreditsAndExtraUsage {
+        // Codex additional limits are too noisy for the main card in this fork. Other providers'
+        // extra windows remain core data, except Claude's low-value routines row.
+        if input.provider == .codex {
             return []
         }
         if input.provider == .copilot, !input.copilotBudgetExtrasEnabled {
             return []
         }
-        let visibleRateWindows = if input.provider == .codex, !input.codexSparkUsageVisible {
-            extraRateWindows.filter { !Self.isCodexSparkRateWindow($0) }
+        let visibleRateWindows = if input.provider == .claude {
+            extraRateWindows.filter { $0.id != "claude-routines" }
         } else {
             extraRateWindows
         }

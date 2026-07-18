@@ -48,9 +48,9 @@ extension StatusItemController {
         return [
             provider.rawValue,
             "style=\(style.rawValue)",
-            "primary=\(Self.iconSignatureValue(resolved?.primary))",
-            "weekly=\(Self.iconSignatureValue(resolved?.secondary))",
-            "credits=\(Self.iconSignatureValue(creditsRemaining))",
+            "primary=\(IconRenderer.iconSignaturePercentBucket(resolved?.primary))",
+            "weekly=\(IconRenderer.iconSignaturePercentBucket(resolved?.secondary))",
+            "credits=\(IconRenderer.iconSignatureCreditsBucket(creditsRemaining))",
             "stale=\(self.store.isStale(provider: provider) ? "1" : "0")",
             "status=\(self.store.statusIndicator(for: provider).rawValue)",
             "anim=\(self.shouldAnimate(provider: provider) ? "1" : "0")",
