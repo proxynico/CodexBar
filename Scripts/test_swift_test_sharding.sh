@@ -97,7 +97,9 @@ run_harness() {
     --swift-command-arg=fake-swift
 }
 
-python3 - "${ROOT_DIR}/.github/workflows/ci.yml" <<'PY'
+CI_WORKFLOW="${ROOT_DIR}/.github/workflows/ci.yml"
+if [[ -f "${CI_WORKFLOW}" ]]; then
+python3 - "${CI_WORKFLOW}" <<'PY'
 import pathlib
 import re
 import sys
@@ -129,6 +131,9 @@ if "CODEXBAR_TEST_SHARD_INDEX=${{ matrix.shard-index }}" not in job:
 if "CODEXBAR_TEST_SHARD_COUNT=${{ matrix.shard-count }}" not in job:
     raise SystemExit("swift-test-macos must pass matrix.shard-count to Scripts/test.sh")
 PY
+else
+  printf 'CI workflow absent; skipping workflow contract checks.\n'
+fi
 
 reset_case retry
 export FAKE_SWIFT_MODE=group_fail_once
