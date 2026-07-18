@@ -31,7 +31,7 @@ extension StatusMenuTests {
     }
 
     @Test
-    func `status menu card follows codex spark visibility`() throws {
+    func `status menu card hides codex extra metrics`() throws {
         let settings = self.makeSettings()
         settings.statusChecksEnabled = false
         settings.refreshFrequency = .manual
@@ -75,13 +75,13 @@ extension StatusMenuTests {
             statusBar: self.makeStatusBarForTesting())
         defer { controller.releaseStatusItemsForTesting() }
 
-        #expect(controller.menuCardModel(for: .codex)?.metrics.contains {
-            $0.id == CodexAdditionalRateLimitMapper.sparkWindowID
-        } == true)
+        let initialModel = try #require(controller.menuCardModel(for: .codex))
+        #expect(!initialModel.metrics.contains { $0.id == CodexAdditionalRateLimitMapper.sparkWindowID })
+        #expect(!initialModel.metrics.contains { $0.id == "codex-other-limit" })
 
         settings.codexSparkUsageVisible = false
         let hiddenModel = try #require(controller.menuCardModel(for: .codex))
         #expect(!hiddenModel.metrics.contains { $0.id == CodexAdditionalRateLimitMapper.sparkWindowID })
-        #expect(hiddenModel.metrics.contains { $0.id == "codex-other-limit" })
+        #expect(!hiddenModel.metrics.contains { $0.id == "codex-other-limit" })
     }
 }

@@ -1293,7 +1293,9 @@ extension StatusMenuTests {
 
         await self.closeMenuAndWaitUntilFresh(controller, menu: menu, key: key)
 
-        let creditsItem = try #require(self.menuItem(in: menu, id: "menuCardCredits"))
+        let creditsItem = try #require(menu.items.first { item in
+            item.submenu?.items.first?.representedObject as? String == StatusItemController.creditsHistoryChartID
+        })
         #expect(
             creditsItem.submenu?.items.first?.representedObject as? String ==
                 StatusItemController.creditsHistoryChartID)
@@ -1334,7 +1336,9 @@ extension StatusMenuTests {
         controller.menuRefreshEnabledOverrideForTesting = true
 
         let openedVersion = try #require(controller.menuVersions[key])
-        _ = try #require(self.menuItem(in: menu, id: "menuCardCredits"))
+        _ = try #require(menu.items.first { item in
+            item.submenu?.items.first?.representedObject as? String == StatusItemController.creditsHistoryChartID
+        })
 
         store.openAIDashboard = self.makeOpenAIDashboard(
             dailyBreakdown: [
@@ -1349,7 +1353,9 @@ extension StatusMenuTests {
 
         await self.closeMenuAndWaitUntilFresh(controller, menu: menu, key: key)
 
-        let creditsItem = try #require(self.menuItem(in: menu, id: "menuCardCredits"))
+        let creditsItem = try #require(menu.items.first { item in
+            item.submenu?.items.first?.representedObject as? String == StatusItemController.creditsHistoryChartID
+        })
         #expect(creditsItem.submenu?.items.first?.representedObject as? String == StatusItemController
             .creditsHistoryChartID)
     }
