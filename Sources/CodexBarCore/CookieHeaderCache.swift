@@ -962,6 +962,37 @@ extension CookieHeaderCache {
         sourceLabel: String) -> Bool
     {
         let key = self.key(for: provider, scope: scope)
+        switch KeychainCacheStore.load(key: key, as: Entry.self) {
+        case let .found(current):
+            if self.sameStoredPayload(current, entry) {
+                if self.stageRefreshMutation(.store(current), key: key) {
+                    self.log.debug("Cookie cache refresh unchanged; staged existing entry", metadata: [
+                        "provider": provider.rawValue,
+                        "source": sourceLabel,
+                    ])
+                    return true
+                }
+                self.updateDisplaySnapshot(key: key, entry: current)
+                if scope == nil {
+                    _ = self.removeLegacyEntry(for: provider)
+                }
+                self.log.debug("Cookie cache unchanged; skipped store", metadata: [
+                    "provider": provider.rawValue,
+                    "source": sourceLabel,
+                ])
+                return true
+            }
+        case .temporarilyUnavailable:
+            self.log.debug("Cookie cache temporarily unavailable; skipped store", metadata: [
+                "provider": provider.rawValue,
+                "source": sourceLabel,
+            ])
+            return false
+        case .invalid:
+            KeychainCacheStore.clear(key: key)
+        case .missing:
+            break
+        }
         if self.stageRefreshMutation(.store(entry), key: key) {
             self.log.debug("Cookie cache refresh staged", metadata: [
                 "provider": provider.rawValue,
@@ -979,6 +1010,12 @@ extension CookieHeaderCache {
         }
         self.log.debug("Cookie cache stored", metadata: ["provider": provider.rawValue, "source": sourceLabel])
         return true
+    }
+
+    private static func sameStoredPayload(_ current: Entry, _ replacement: Entry) -> Bool {
+        current.cookieHeader == replacement.cookieHeader
+            && current.sourceLabel == replacement.sourceLabel
+            && current.authenticationFailurePolicy == replacement.authenticationFailurePolicy
     }
 
     /// Hides current entries and stages refresh mutations in memory. The caller explicitly commits
