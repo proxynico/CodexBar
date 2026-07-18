@@ -218,8 +218,7 @@ struct CodexUserFacingErrorTests {
         #expect(
             model.creditsHintCopyText ==
                 "OpenAI web refresh was interrupted. Refresh OpenAI cookies and try again.")
-        #expect(
-            model.creditsText == "Codex usage is temporarily unavailable. Try refreshing. Cached values from 1m ago.")
+        #expect(model.creditsText == nil)
     }
 
     @Test
@@ -247,7 +246,7 @@ struct CodexUserFacingErrorTests {
 
         #expect(menuModel.creditsText == nil)
         #expect(menuModel.creditsHintText == nil)
-        #expect(settingsModel.creditsText == UsageError.noRateLimitsFound.errorDescription)
+        #expect(settingsModel.creditsText == nil)
         #expect(settingsModel.creditsHintText?.contains("No matching OpenAI web session found") == true)
         #expect(settingsInfoRows.contains { row in
             row.id == .openAIWeb && row.value.contains("No matching OpenAI web session found")
