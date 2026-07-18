@@ -54,7 +54,7 @@ struct ClaudeOAuthCredentialsStoreTests {
     func `loads from keychain cache before expired file`() throws {
         let service = "com.steipete.codexbar.cache.tests.\(UUID().uuidString)"
         try ProviderInteractionContext.$current.withValue(.background) {
-            try KeychainCacheStore.withServiceOverrideForTesting(service) {
+            try self.withCacheEnabledService(service) {
                 try KeychainAccessGate.withTaskOverrideForTesting(false) {
                     KeychainCacheStore.setTestStoreForTesting(true)
                     defer { KeychainCacheStore.setTestStoreForTesting(false) }
@@ -260,7 +260,7 @@ struct ClaudeOAuthCredentialsStoreTests {
     @Test
     func `load with auto refresh expired claude CLI owner throws delegated refresh`() async throws {
         let service = "com.steipete.codexbar.cache.tests.\(UUID().uuidString)"
-        try await KeychainCacheStore.withServiceOverrideForTesting(service) {
+        try await self.withCacheEnabledService(service) {
             KeychainCacheStore.setTestStoreForTesting(true)
             defer { KeychainCacheStore.setTestStoreForTesting(false) }
 
@@ -310,7 +310,7 @@ struct ClaudeOAuthCredentialsStoreTests {
     @Test
     func `load with auto refresh expired codexbar owner uses direct refresh path`() async throws {
         let service = "com.steipete.codexbar.cache.tests.\(UUID().uuidString)"
-        try await KeychainCacheStore.withServiceOverrideForTesting(service) {
+        try await self.withCacheEnabledService(service) {
             KeychainCacheStore.setTestStoreForTesting(true)
             defer { KeychainCacheStore.setTestStoreForTesting(false) }
 
@@ -371,7 +371,7 @@ struct ClaudeOAuthCredentialsStoreTests {
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         let fileURL = tempDir.appendingPathComponent("credentials.json")
-        try ClaudeOAuthCredentialsStore.withIsolatedMemoryCacheForTesting {
+        try self.withCacheEnabledMemoryCache {
             try ClaudeOAuthCredentialsStore.withCredentialsURLOverrideForTesting(fileURL) {
                 try ClaudeOAuthCredentialsStore.withKeychainAccessOverrideForTesting(true) {
                     ClaudeOAuthCredentialsStore.invalidateCache()
@@ -411,7 +411,7 @@ struct ClaudeOAuthCredentialsStoreTests {
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         let fileURL = tempDir.appendingPathComponent("credentials.json")
-        ClaudeOAuthCredentialsStore.withCredentialsURLOverrideForTesting(fileURL) {
+        self.withCacheEnabledCredentialsURL(fileURL) {
             ClaudeOAuthCredentialsStore.invalidateCache()
 
             let expiredData = self.makeCredentialsData(
@@ -441,7 +441,7 @@ struct ClaudeOAuthCredentialsStoreTests {
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         let fileURL = tempDir.appendingPathComponent("credentials.json")
-        ClaudeOAuthCredentialsStore.withCredentialsURLOverrideForTesting(fileURL) {
+        self.withCacheEnabledCredentialsURL(fileURL) {
             ClaudeOAuthCredentialsStore.invalidateCache()
 
             let expiredData = self.makeCredentialsData(
@@ -484,7 +484,7 @@ struct ClaudeOAuthCredentialsStoreTests {
     @Test
     func `syncs cache when claude keychain fingerprint changes and token differs`() throws {
         let service = "com.steipete.codexbar.cache.tests.\(UUID().uuidString)"
-        try KeychainCacheStore.withServiceOverrideForTesting(service) {
+        try self.withCacheEnabledService(service) {
             try KeychainAccessGate.withTaskOverrideForTesting(false) {
                 KeychainCacheStore.setTestStoreForTesting(true)
                 defer { KeychainCacheStore.setTestStoreForTesting(false) }
@@ -583,7 +583,7 @@ struct ClaudeOAuthCredentialsStoreTests {
     @Test
     func `does not sync in background when cache valid and prompt mode only on user action`() throws {
         let service = "com.steipete.codexbar.cache.tests.\(UUID().uuidString)"
-        try KeychainCacheStore.withServiceOverrideForTesting(service) {
+        try self.withCacheEnabledService(service) {
             try KeychainAccessGate.withTaskOverrideForTesting(false) {
                 KeychainCacheStore.setTestStoreForTesting(true)
                 defer { KeychainCacheStore.setTestStoreForTesting(false) }
@@ -670,7 +670,7 @@ struct ClaudeOAuthCredentialsStoreTests {
         KeychainCacheStore.setTestStoreForTesting(true)
         defer { KeychainCacheStore.setTestStoreForTesting(false) }
 
-        try ClaudeOAuthCredentialsStore.withIsolatedMemoryCacheForTesting {
+        try self.withCacheEnabledMemoryCache {
             try ClaudeOAuthCredentialsStore.withIsolatedCredentialsFileTrackingForTesting {
                 ClaudeOAuthCredentialsStore.invalidateCache()
                 ClaudeOAuthCredentialsStore._resetClaudeKeychainChangeTrackingForTesting()
@@ -727,7 +727,7 @@ struct ClaudeOAuthCredentialsStoreTests {
         KeychainCacheStore.setTestStoreForTesting(true)
         defer { KeychainCacheStore.setTestStoreForTesting(false) }
 
-        try ClaudeOAuthCredentialsStore.withIsolatedMemoryCacheForTesting {
+        try self.withCacheEnabledMemoryCache {
             try ClaudeOAuthCredentialsStore.withIsolatedCredentialsFileTrackingForTesting {
                 ClaudeOAuthCredentialsStore.invalidateCache()
                 ClaudeOAuthCredentialsStore._resetClaudeKeychainChangeTrackingForTesting()
@@ -785,7 +785,7 @@ struct ClaudeOAuthCredentialsStoreTests {
     @Test
     func `respects prompt cooldown gate when disabled prompting`() throws {
         let service = "com.steipete.codexbar.cache.tests.\(UUID().uuidString)"
-        try KeychainCacheStore.withServiceOverrideForTesting(service) {
+        try self.withCacheEnabledService(service) {
             KeychainCacheStore.setTestStoreForTesting(true)
             defer { KeychainCacheStore.setTestStoreForTesting(false) }
 
@@ -909,6 +909,50 @@ struct ClaudeOAuthCredentialsStoreTests {
         }
 
         #expect(forwarded == fingerprint)
+    }
+}
+
+extension ClaudeOAuthCredentialsStoreTests {
+    private func withCacheEnabled<T>(_ operation: () throws -> T) rethrows -> T {
+        let pendingStore = ClaudeOAuthCredentialsStore.PendingCacheClearMemoryStore()
+        return try ClaudeOAuthKeychainPromptPreference.withTaskOverrideForTesting(.always) {
+            try ClaudeOAuthCredentialsStore.withPendingCacheClearStoreOverrideForTesting(pendingStore) {
+                try operation()
+            }
+        }
+    }
+
+    private func withCacheEnabled<T>(_ operation: () async throws -> T) async rethrows -> T {
+        let pendingStore = ClaudeOAuthCredentialsStore.PendingCacheClearMemoryStore()
+        return try await ClaudeOAuthKeychainPromptPreference.withTaskOverrideForTesting(.always) {
+            try await ClaudeOAuthCredentialsStore.withPendingCacheClearStoreOverrideForTesting(pendingStore) {
+                try await operation()
+            }
+        }
+    }
+
+    private func withCacheEnabledService<T>(_ service: String, operation: () throws -> T) rethrows -> T {
+        try self.withCacheEnabled {
+            try KeychainCacheStore.withServiceOverrideForTesting(service, operation: operation)
+        }
+    }
+
+    private func withCacheEnabledService<T>(_ service: String, operation: () async throws -> T) async rethrows -> T {
+        try await self.withCacheEnabled {
+            try await KeychainCacheStore.withServiceOverrideForTesting(service, operation: operation)
+        }
+    }
+
+    private func withCacheEnabledMemoryCache<T>(_ operation: () throws -> T) rethrows -> T {
+        try self.withCacheEnabled {
+            try ClaudeOAuthCredentialsStore.withIsolatedMemoryCacheForTesting(operation: operation)
+        }
+    }
+
+    private func withCacheEnabledCredentialsURL<T>(_ url: URL, operation: () throws -> T) rethrows -> T {
+        try self.withCacheEnabled {
+            try ClaudeOAuthCredentialsStore.withCredentialsURLOverrideForTesting(url, operation: operation)
+        }
     }
 }
 
