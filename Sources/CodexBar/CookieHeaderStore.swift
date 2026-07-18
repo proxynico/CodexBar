@@ -61,13 +61,14 @@ struct KeychainCookieHeaderStore: CookieHeaderStoring {
         }
         Self.cacheLock.unlock()
         var result: CFTypeRef?
-        let query: [String: Any] = [
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: self.service,
             kSecAttrAccount as String: self.account,
             kSecMatchLimit as String: kSecMatchLimitOne,
             kSecReturnData as String: true,
         ]
+        KeychainNoUIQuery.apply(to: &query)
 
         if case .interactionRequired = KeychainAccessPreflight
             .checkGenericPassword(service: self.service, account: self.account)
@@ -79,7 +80,7 @@ struct KeychainCookieHeaderStore: CookieHeaderStoring {
         }
 
         let status = KeychainSecurity.copyMatching(query as CFDictionary, &result)
-        if status == errSecItemNotFound {
+        if status == errSecItemNotFound || status == errSecInteractionNotAllowed {
             // Cache the nil result
             Self.cacheLock.lock()
             Self.cache[self.account] = CachedValue(value: nil, timestamp: Date())

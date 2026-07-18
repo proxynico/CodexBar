@@ -112,19 +112,16 @@ resolve_signing_mode() {
 
   if [[ -n "${APP_IDENTITY:-}" ]]; then
     if [[ "${APP_IDENTITY}" == "CodexBar Development" ]]; then
-      log "WARN: APP_IDENTITY='CodexBar Development' is not usable for bundled framework library validation; falling back to adhoc signing."
+      log "WARN: APP_IDENTITY='CodexBar Development' is not usable for bundled framework library validation; trying installed signing identities."
       unset APP_IDENTITY
-      SIGNING_MODE="adhoc"
-      return
-    fi
-    if has_signing_identity "${APP_IDENTITY}"; then
+    elif has_signing_identity "${APP_IDENTITY}"; then
       export_team_id_from_identity "${APP_IDENTITY}"
       SIGNING_MODE="identity"
       return
+    else
+      log "WARN: APP_IDENTITY not found in Keychain; trying installed signing identities."
+      unset APP_IDENTITY
     fi
-    log "WARN: APP_IDENTITY not found in Keychain; falling back to adhoc signing."
-    SIGNING_MODE="adhoc"
-    return
   fi
 
   local candidate=""

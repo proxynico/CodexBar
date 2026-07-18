@@ -87,12 +87,19 @@ public struct ClaudeFetchPlan: Equatable, Sendable {
 
     public var compatibilityStrategy: ClaudeUsageStrategy? {
         guard let preferredStep else { return nil }
-        let useWebExtras = self.input.runtime == .app
-            && preferredStep.dataSource == .cli
-            && self.input.webExtrasEnabled
+        let useWebExtras = preferredStep.dataSource == .cli && self.cliFallbackUsesWebExtras
         return ClaudeUsageStrategy(
             dataSource: preferredStep.dataSource,
             useWebExtras: useWebExtras)
+    }
+
+    /// Auto mode must keep model-scoped usage available when it falls back from OAuth to the CLI.
+    /// The CLI does not expose limits such as Fable, while the web API does. Only use an already
+    /// discovered web session so a CLI-only setup does not trigger unnecessary browser-cookie work.
+    public var cliFallbackUsesWebExtras: Bool {
+        self.input.runtime == .app &&
+            (self.input.webExtrasEnabled ||
+                (self.input.selectedDataSource == .auto && self.input.hasWebSession))
     }
 
     public var orderLabel: String {
@@ -175,8 +182,8 @@ public enum ClaudeSourcePlanner {
             case .app:
                 [
                     self.step(.oauth, reason: .appAutoPreferredOAuth, input: input),
-                    self.step(.cli, reason: .appAutoFallbackCLI, input: input),
                     self.step(.web, reason: .appAutoFallbackWeb, input: input),
+                    self.step(.cli, reason: .appAutoFallbackCLI, input: input),
                 ]
             case .cli:
                 [

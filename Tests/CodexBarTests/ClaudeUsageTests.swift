@@ -1134,7 +1134,7 @@ struct ClaudeAutoFetcherCharacterizationTests {
     }
 
     @Test
-    func `app runtime auto prefers CLI before web when OAuth unavailable`() async throws {
+    func `app runtime auto prefers web before CLI when OAuth unavailable`() async throws {
         let cliLogURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("claude-auto-web-log-\(UUID().uuidString).txt")
         let log = InvocationLog(url: cliLogURL)
@@ -1199,8 +1199,12 @@ struct ClaudeAutoFetcherCharacterizationTests {
                     }, operation: {
                         let snapshot = try await fetcher.loadLatestUsage(model: "sonnet")
 
-                        #expect(snapshot.rawText != nil)
-                        #expect(log.contents().contains("usage"))
+                        #expect(snapshot.primary.usedPercent == 11)
+                        #expect(snapshot.secondary?.usedPercent == 22)
+                        #expect(snapshot.opus?.usedPercent == 33)
+                        #expect(snapshot.accountEmail == "web@example.com")
+                        #expect(snapshot.loginMethod == "Claude Max")
+                        #expect(log.contents().isEmpty)
                     })
                 }
             }

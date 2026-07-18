@@ -349,8 +349,13 @@ enum AlibabaChromiumCookieFallbackImporter {
                 break
             }
 
-            if let password = self.safeStoragePassword(service: label.service, account: label.account) {
+            switch self.safeStoragePassword(service: label.service, account: label.account) {
+            case let .success(password):
                 keys.append(self.deriveKey(from: password))
+            case .interactionNotAllowed:
+                sawDenied = true
+            case .notFound:
+                break
             }
         }
 
@@ -363,11 +368,17 @@ enum AlibabaChromiumCookieFallbackImporter {
         throw ImportError.keyUnavailable(browser: browser)
     }
 
-    private static func safeStoragePassword(service: String, account: String) -> String? {
+    private enum SafeStoragePasswordResult {
+        case success(String)
+        case interactionNotAllowed
+        case notFound
+    }
+
+    private static func safeStoragePassword(service: String, account: String) -> SafeStoragePasswordResult {
         // The preflight classifies prompt-requiring items as .interactionRequired, but its
         // .notFound (gate disabled) and .failure outcomes still reach this read. Honor the
         // access gate and keep the read strictly non-interactive so it can never prompt.
-        guard !KeychainAccessGate.isDisabled else { return nil }
+        guard !KeychainAccessGate.isDisabled else { return .notFound }
         var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -379,8 +390,14 @@ enum AlibabaChromiumCookieFallbackImporter {
 
         var result: AnyObject?
         let status = KeychainSecurity.copyMatching(query as CFDictionary, &result)
-        guard status == errSecSuccess, let data = result as? Data else { return nil }
-        return String(data: data, encoding: .utf8)
+        if status == errSecInteractionNotAllowed {
+            return .interactionNotAllowed
+        }
+        guard status == errSecSuccess, let data = result as? Data, let password = String(data: data, encoding: .utf8)
+        else {
+            return .notFound
+        }
+        return .success(password)
     }
 
     private static func deriveKey(from password: String) -> Data {

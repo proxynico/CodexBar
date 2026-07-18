@@ -64,8 +64,7 @@ public enum ClaudeProviderDescriptor {
                 ClaudeWebFetchStrategy(browserDetection: context.browserDetection)
             case .cli:
                 ClaudeCLIFetchStrategy(
-                    useWebExtras: context.runtime == .app
-                        && planningInput.webExtrasEnabled,
+                    useWebExtras: plan.cliFallbackUsesWebExtras,
                     manualCookieHeader: manualCookieHeader,
                     browserDetection: context.browserDetection,
                     hasWebFallback: planningInput.hasWebSession)

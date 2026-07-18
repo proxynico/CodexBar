@@ -44,7 +44,7 @@ struct ClaudeWebFetchDeadlineTests {
     }
 
     @Test
-    func `stalled app auto browser probe does not delay CLI success`() async throws {
+    func `stalled app auto browser probe is deadline bounded before CLI success`() async throws {
         let planningProbe = ClaudeWebPlanningAvailabilityProbe()
         let cliPath = try Self.makeLoggedInClaudeCLI()
         let context = Self.makeContext(
@@ -82,12 +82,12 @@ struct ClaudeWebFetchDeadlineTests {
         let result = try outcome.result.get()
 
         #expect(result.strategyID == "claude.cli")
-        #expect(outcome.attempts.map(\.strategyID) == ["claude.oauth", "claude.cli"])
-        #expect(!planningProbe.wasInvoked)
+        #expect(outcome.attempts.map(\.strategyID) == ["claude.oauth", "claude.web", "claude.cli"])
+        #expect(planningProbe.wasInvoked)
     }
 
     @Test
-    func `caller cancellation during deferred app auto browser probe stops web fallback`() async {
+    func `caller cancellation during app auto browser probe stops CLI fallback`() async {
         let planningProbe = ClaudeWebPlanningAvailabilityProbe()
         let webFetchProbe = ClaudeWebPlanningAvailabilityProbe()
         let context = Self.makeContext(
@@ -143,7 +143,7 @@ struct ClaudeWebFetchDeadlineTests {
         case let .failure(error):
             #expect(error is CancellationError)
         }
-        #expect(outcome.attempts.map(\.strategyID) == ["claude.oauth", "claude.cli"])
+        #expect(outcome.attempts.map(\.strategyID) == ["claude.oauth"])
         #expect(webFetchProbe.invocationCount == 0)
     }
 

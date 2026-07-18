@@ -107,7 +107,7 @@ struct ClaudeCLITimeoutRetryTests {
     }
 
     @Test
-    func `auto cli usage retries loading panel before stale web fallback`() async throws {
+    func `auto cli usage retries loading panel after web fallback fails`() async throws {
         let attempts = AttemptRecorder()
         let webRequests = WebRequestRecorder()
         let fetcher = ClaudeUsageFetcher(
@@ -150,7 +150,7 @@ struct ClaudeCLITimeoutRetryTests {
         let recorded = await attempts.snapshot()
         #expect(recorded.count == 2)
         #expect(recorded.timeouts == [12, 60])
-        #expect(webRequests.snapshot().isEmpty)
+        #expect(webRequests.snapshot() == ["/api/organizations"])
         #expect(snapshot.primary.usedPercent == 5)
         #expect(snapshot.secondary?.usedPercent == 7)
         #expect(snapshot.accountEmail == "loading-cli@example.com")

@@ -539,6 +539,30 @@ public enum CookieHeaderCache {
         sourceLabel: String) -> Bool
     {
         let key = self.key(for: provider, scope: scope)
+        switch KeychainCacheStore.load(key: key, as: Entry.self) {
+        case let .found(current):
+            if current.cookieHeader == entry.cookieHeader,
+               current.sourceLabel == entry.sourceLabel
+            {
+                self.updateDisplaySnapshot(key: key, entry: current)
+                self.log.debug("Cookie cache unchanged; skipped store", metadata: [
+                    "provider": provider.rawValue,
+                    "source": sourceLabel,
+                ])
+                return true
+            }
+        case .temporarilyUnavailable:
+            self.log.debug("Cookie cache temporarily unavailable; skipped store", metadata: [
+                "provider": provider.rawValue,
+                "source": sourceLabel,
+            ])
+            return false
+        case .invalid:
+            KeychainCacheStore.clear(key: key)
+        case .missing:
+            break
+        }
+
         guard KeychainCacheStore.storeResult(key: key, entry: entry) else { return false }
         self.updateDisplaySnapshot(key: key, entry: entry)
         if scope == nil {

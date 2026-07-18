@@ -120,7 +120,7 @@ struct KeychainPromptSafetyAuditTests {
     func `production source routes Security item APIs through the test safety gateway`() throws {
         let securityItemCalls = ["SecItemCopyMatching", "SecItemUpdate", "SecItemAdd", "SecItemDelete"]
         let offenders = try Self.swiftFiles(
-            under: Self.repoRoot().appendingPathComponent("Sources", isDirectory: true))
+            in: Self.repoRoot().appendingPathComponent("Sources", isDirectory: true))
             .filter { file in
                 guard !file.path.hasSuffix("Sources/CodexBarCore/KeychainSecurity.swift") else { return false }
                 let text = try Self.readFile(file)
@@ -128,6 +128,42 @@ struct KeychainPromptSafetyAuditTests {
             }
 
         #expect(offenders.isEmpty, "Security item access bypasses KeychainSecurity: \(offenders.map(\.path))")
+    }
+
+    @Test
+    func `background source keychain reads use no UI queries`() throws {
+        let allowedManualCallSites = Set([
+            "Sources/CodexBarCore/KeychainAccessPreflight.swift",
+            "Sources/CodexBarCore/KeychainSecurity.swift",
+            "Sources/CodexBarCore/Providers/Claude/ClaudeOAuth/ClaudeOAuthCredentials.swift",
+            "Sources/CodexBarCore/Providers/Claude/ClaudeOAuth/ClaudeOAuthKeychainQueryTiming.swift",
+            "Sources/CodexBarCore/Providers/Zed/ZedStatusProbe.swift",
+        ])
+        let offenders = try Self.swiftSourceFiles().flatMap { file -> [String] in
+            let relativePath = Self.relativePath(file)
+            guard !allowedManualCallSites.contains(relativePath) else { return [] }
+
+            let lines = try Self.lines(in: file)
+            return lines.enumerated().compactMap { index, line in
+                guard line.contains("SecItemCopyMatching") else { return nil }
+                let contextStart = max(lines.startIndex, index - 20)
+                let hasNoUIQuery = lines[contextStart...index].contains { contextLine in
+                    contextLine.contains("KeychainNoUIQuery.apply(to: &query)")
+                }
+                return hasNoUIQuery ? nil : "\(relativePath):\(index + 1)"
+            }
+        }
+
+        #expect(offenders.isEmpty, "Production keychain reads missing KeychainNoUIQuery: \(offenders)")
+    }
+
+    @Test
+    func `keychain cache writes do not attach legacy ACLs`() throws {
+        let cacheStore = try Self.readRepoFile("Sources/CodexBarCore/KeychainCacheStore.swift")
+
+        #expect(!cacheStore.contains("kSecAttrAccess as String"))
+        #expect(!cacheStore.contains("SecAccessCreate"))
+        #expect(!cacheStore.contains("SecTrustedApplicationCreateFromPath"))
     }
 
     private static func repoRoot() -> URL {
@@ -151,12 +187,16 @@ struct KeychainPromptSafetyAuditTests {
 
     private static func swiftTestFiles(excludingSelf: Bool = false) throws -> [URL] {
         let testsRoot = self.repoRoot().appendingPathComponent("Tests/CodexBarTests", isDirectory: true)
-        return try self.swiftFiles(under: testsRoot).filter { file in
+        return try self.swiftFiles(in: testsRoot).filter { file in
             !(excludingSelf && file.path.hasSuffix("Tests/CodexBarTests/KeychainPromptSafetyAuditTests.swift"))
         }
     }
 
-    private static func swiftFiles(under root: URL) throws -> [URL] {
+    private static func swiftSourceFiles() throws -> [URL] {
+        try self.swiftFiles(in: self.repoRoot().appendingPathComponent("Sources", isDirectory: true))
+    }
+
+    private static func swiftFiles(in root: URL) throws -> [URL] {
         guard let enumerator = FileManager.default.enumerator(
             at: root,
             includingPropertiesForKeys: [.isRegularFileKey],
@@ -171,6 +211,13 @@ struct KeychainPromptSafetyAuditTests {
             }
         }
         return files
+    }
+
+    private static func relativePath(_ url: URL) -> String {
+        let rootPath = self.repoRoot().standardizedFileURL.path
+        let filePath = url.standardizedFileURL.path
+        guard filePath.hasPrefix(rootPath + "/") else { return filePath }
+        return String(filePath.dropFirst(rootPath.count + 1))
     }
 
     private static func hasOpenKeychainTestDouble(lines: [Substring], before oneBasedLineNumber: Int) -> Bool {
