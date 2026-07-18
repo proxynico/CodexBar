@@ -115,7 +115,7 @@ struct ClaudeBaselineCharacterizationTests {
     }
 
     @Test
-    func `app auto pipeline order is OAuth then CLI then web`() async {
+    func `app auto pipeline order is OAuth then web then CLI`() async {
         let settings = ProviderSettingsSnapshot.make(claude: .init(
             usageDataSource: .auto,
             webExtrasEnabled: true,
@@ -127,7 +127,7 @@ struct ClaudeBaselineCharacterizationTests {
             "CLAUDE_CLI_PATH": "/usr/bin/true",
         ]
         let strategyIDs = await self.strategyIDs(runtime: .app, sourceMode: .auto, env: env, settings: settings)
-        #expect(strategyIDs == ["claude.oauth", "claude.cli", "claude.web"])
+        #expect(strategyIDs == ["claude.oauth", "claude.web", "claude.cli"])
     }
 
     @Test
@@ -174,10 +174,10 @@ struct ClaudeBaselineCharacterizationTests {
         await self.withNoOAuthCredentials {
             await ClaudeCLIResolver.withResolvedBinaryPathOverrideForTesting("/definitely/missing/claude") {
                 let strategyIDs = await self.strategyIDs(runtime: .app, sourceMode: .auto, env: env, settings: settings)
-                #expect(strategyIDs == ["claude.oauth", "claude.cli", "claude.web"])
+                #expect(strategyIDs == ["claude.oauth", "claude.web", "claude.cli"])
 
                 let outcome = await self.fetchOutcome(runtime: .app, sourceMode: .auto, env: env, settings: settings)
-                #expect(outcome.attempts.map(\.strategyID) == ["claude.oauth", "claude.cli", "claude.web"])
+                #expect(outcome.attempts.map(\.strategyID) == ["claude.oauth", "claude.web", "claude.cli"])
                 #expect(outcome.attempts.map(\.wasAvailable) == [false, false, false])
 
                 switch outcome.result {
@@ -216,7 +216,7 @@ struct ClaudeBaselineCharacterizationTests {
                         env: env,
                         settings: settings)
 
-                    #expect(outcome.attempts.map(\.strategyID) == ["claude.oauth", "claude.cli", "claude.web"])
+                    #expect(outcome.attempts.map(\.strategyID) == ["claude.oauth", "claude.web", "claude.cli"])
                     #expect(outcome.attempts.map(\.wasAvailable) == [false, false, false])
                 }
             }
@@ -246,7 +246,7 @@ struct ClaudeBaselineCharacterizationTests {
                         sourceMode: .auto,
                         env: env,
                         settings: settings)
-                    #expect(outcome.attempts.map(\.strategyID) == ["claude.oauth", "claude.cli", "claude.web"])
+                    #expect(outcome.attempts.map(\.strategyID) == ["claude.oauth", "claude.web", "claude.cli"])
                     #expect(outcome.attempts.map(\.wasAvailable) == [false, false, false])
                 }
             }
@@ -275,7 +275,7 @@ struct ClaudeBaselineCharacterizationTests {
                         sourceMode: .auto,
                         env: env,
                         settings: settings)
-                    #expect(outcome.attempts.map(\.strategyID) == ["claude.oauth", "claude.cli", "claude.web"])
+                    #expect(outcome.attempts.map(\.strategyID) == ["claude.oauth", "claude.web", "claude.cli"])
                     #expect(outcome.attempts.map(\.wasAvailable) == [false, false, false])
                 }
             }
@@ -334,11 +334,10 @@ struct ClaudeBaselineCharacterizationTests {
         }
         let result = try outcome.result.get()
 
-        #expect(outcome.attempts.map(\.strategyID) == ["claude.oauth", "claude.cli", "claude.web"])
-        #expect(outcome.attempts.map(\.wasAvailable) == [false, false, true])
+        #expect(outcome.attempts.map(\.strategyID) == ["claude.oauth", "claude.web"])
+        #expect(outcome.attempts.map(\.wasAvailable) == [false, true])
         #expect(result.strategyID == "claude.web")
-        let invocations = try String(contentsOf: invocationLog, encoding: .utf8)
-        #expect(invocations == "auth status --json\n")
+        #expect(!FileManager.default.fileExists(atPath: invocationLog.path))
     }
 
     @Test
@@ -431,8 +430,8 @@ struct ClaudeBaselineCharacterizationTests {
                         await self.fetchOutcome(runtime: .app, sourceMode: .auto, env: env, settings: settings)
                     }
 
-                    #expect(outcome.attempts.map(\.strategyID) == ["claude.oauth", "claude.cli"])
-                    #expect(outcome.attempts.map(\.wasAvailable) == [false, true])
+                    #expect(outcome.attempts.map(\.strategyID) == ["claude.oauth", "claude.web", "claude.cli"])
+                    #expect(outcome.attempts.map(\.wasAvailable) == [false, false, true])
 
                     switch outcome.result {
                     case let .success(result):

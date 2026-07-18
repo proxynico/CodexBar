@@ -749,14 +749,14 @@ struct ClaudeOAuthTests {
     }
 
     @Test
-    func `falls back to CLI when O auth missing and CLI available`() {
+    func `falls back to web when O auth is missing and both fallbacks are available`() {
         let strategy = ClaudeProviderDescriptor.resolveUsageStrategy(
             selectedDataSource: .auto,
             webExtrasEnabled: false,
             hasWebSession: true,
             hasCLI: true,
             hasOAuthCredentials: false)
-        #expect(strategy.dataSource == .cli)
+        #expect(strategy.dataSource == .web)
     }
 
     @Test
