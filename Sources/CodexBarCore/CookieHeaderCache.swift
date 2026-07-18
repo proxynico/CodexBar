@@ -43,6 +43,7 @@ public struct CookieRefreshCommitSummary: Equatable, Sendable {
 
 private enum CookieRefreshStagedMutation: Sendable {
     case store(CookieHeaderCacheEntry)
+    case retain(CookieHeaderCacheEntry)
     case clear
 }
 
@@ -965,7 +966,7 @@ extension CookieHeaderCache {
         switch KeychainCacheStore.load(key: key, as: Entry.self) {
         case let .found(current):
             if self.sameStoredPayload(current, entry) {
-                if self.stageRefreshMutation(.store(current), key: key) {
+                if self.stageRefreshMutation(.retain(current), key: key) {
                     self.log.debug("Cookie cache refresh unchanged; staged existing entry", metadata: [
                         "provider": provider.rawValue,
                         "source": sourceLabel,
@@ -1044,15 +1045,23 @@ extension CookieHeaderCache {
 
                 let stagedCount = state.stagedMutations.count
                 guard stagedCount == 1,
-                      let (key, mutation) = state.stagedMutations.first,
-                      case let .store(entry) = mutation
+                      let (key, mutation) = state.stagedMutations.first
                 else {
                     return CookieRefreshCommitSummary(
                         stagedCount: stagedCount,
                         committedCount: 0,
                         failedCount: max(stagedCount, 1))
                 }
-                guard KeychainCacheStore.storeResult(key: key, entry: entry) else {
+                let entry: Entry
+                switch mutation {
+                case let .store(replacement):
+                    guard KeychainCacheStore.storeResult(key: key, entry: replacement) else {
+                        return CookieRefreshCommitSummary(stagedCount: 1, committedCount: 0, failedCount: 1)
+                    }
+                    entry = replacement
+                case let .retain(current):
+                    entry = current
+                case .clear:
                     return CookieRefreshCommitSummary(stagedCount: 1, committedCount: 0, failedCount: 1)
                 }
                 self.updateDisplaySnapshot(key: key, entry: entry)
@@ -1087,6 +1096,7 @@ extension CookieHeaderCache {
             if let mutation = state.stagedMutations[key] {
                 return switch mutation {
                 case let .store(entry): .visible(entry)
+                case let .retain(entry): .visible(entry)
                 case .clear: .visible(nil)
                 }
             }

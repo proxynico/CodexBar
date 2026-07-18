@@ -29,6 +29,35 @@ struct CookieHeaderCacheNoRewriteTests {
     }
 
     @Test
+    func `unchanged refresh transaction retains entry without a keychain write`() {
+        self.withIsolatedCookieCache {
+            CookieHeaderCache.store(
+                provider: .commandcode,
+                cookieHeader: "auth=abc",
+                sourceLabel: "Chrome",
+                now: Date(timeIntervalSince1970: 10))
+            let recorder = KeychainCacheStore.OperationRecorder()
+
+            let summary = KeychainCacheStore.withOperationRecorderForTesting(recorder) {
+                guard let gate = CookieHeaderCache.beginRefreshReadSuppression(provider: .commandcode) else {
+                    Issue.record("Expected refresh suppression gate")
+                    return CookieRefreshCommitSummary(stagedCount: 0, committedCount: 0, failedCount: 1)
+                }
+                #expect(CookieHeaderCache.storeResult(
+                    provider: .commandcode,
+                    cookieHeader: "auth=abc",
+                    sourceLabel: "Chrome",
+                    now: Date(timeIntervalSince1970: 20)))
+                return CookieHeaderCache.commitRefreshReadSuppression(gate)
+            }
+
+            #expect(summary == CookieRefreshCommitSummary(stagedCount: 1, committedCount: 1, failedCount: 0))
+            #expect(recorder.operations == [.load])
+            #expect(CookieHeaderCache.load(provider: .commandcode)?.storedAt == Date(timeIntervalSince1970: 10))
+        }
+    }
+
+    @Test
     func `changed cookie payload rewrites stored entry`() {
         self.withIsolatedCookieCache {
             let firstStoredAt = Date(timeIntervalSince1970: 10)

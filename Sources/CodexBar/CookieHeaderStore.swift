@@ -73,18 +73,22 @@ struct KeychainCookieHeaderStore: CookieHeaderStoring {
         if case .interactionRequired = KeychainAccessPreflight
             .checkGenericPassword(service: self.service, account: self.account)
         {
-            KeychainPromptHandler.handler?(KeychainPromptContext(
+            KeychainPromptHandler.notify(KeychainPromptContext(
                 kind: self.promptKind,
                 service: self.service,
                 account: self.account))
         }
 
         let status = KeychainSecurity.copyMatching(query as CFDictionary, &result)
-        if status == errSecItemNotFound || status == errSecInteractionNotAllowed {
+        if status == errSecItemNotFound {
             // Cache the nil result
             Self.cacheLock.lock()
             Self.cache[self.account] = CachedValue(value: nil, timestamp: Date())
             Self.cacheLock.unlock()
+            return nil
+        }
+        if status == errSecInteractionNotAllowed {
+            Self.log.debug("Keychain cookie read temporarily unavailable for \(self.account)")
             return nil
         }
         guard status == errSecSuccess else {

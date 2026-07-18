@@ -200,11 +200,14 @@ struct CLIWebFallbackTests {
     }
 
     @Test
-    func `claude web fallback is disabled for app auto`() {
+    func `claude web fallback continues to CLI for app auto`() {
         let strategy = ClaudeWebFetchStrategy(browserDetection: BrowserDetection(cacheTTL: 0))
         let error = ClaudeWebAPIFetcher.FetchError.unauthorized
         #expect(strategy.shouldFallback(on: error, context: self.makeContext(runtime: .cli, sourceMode: .auto)))
-        #expect(!strategy.shouldFallback(on: error, context: self.makeContext(runtime: .app, sourceMode: .auto)))
+        #expect(strategy.shouldFallback(on: error, context: self.makeContext(runtime: .app, sourceMode: .auto)))
+        #expect(!strategy.shouldFallback(
+            on: CancellationError(),
+            context: self.makeContext(runtime: .app, sourceMode: .auto)))
     }
 
     private func makeCodexDisplayOnlyDecision() -> CodexDashboardAuthorityDecision {

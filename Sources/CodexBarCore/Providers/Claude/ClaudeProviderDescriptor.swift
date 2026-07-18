@@ -88,12 +88,14 @@ public enum ClaudeProviderDescriptor {
         let webExtrasEnabled = context.settings?.claude?.webExtrasEnabled ?? false
         let needsOAuthAvailability = context.runtime == .app && context.sourceMode == .auto
         let hasWebSession = Self.hasPlausibleWebSession(context: context)
+        let hasReusableWebSession = Self.hasReusableWebSession(context: context)
 
         return ClaudeSourcePlanningInput(
             runtime: context.runtime,
             selectedDataSource: Self.sourceDataSource(from: context.sourceMode),
             webExtrasEnabled: webExtrasEnabled,
             hasWebSession: hasWebSession,
+            hasReusableWebSession: hasReusableWebSession,
             hasCLI: ClaudeCLIResolver.isAvailable(environment: context.env),
             hasOAuthCredentials: needsOAuthAvailability && ClaudeOAuthPlanningAvailability.isAvailable(
                 runtime: context.runtime,
@@ -125,6 +127,13 @@ public enum ClaudeProviderDescriptor {
             // CLI auto continues to perform its real session import inside the bounded web fetch.
             return true
         }
+    }
+
+    private static func hasReusableWebSession(context: ProviderFetchContext) -> Bool {
+        guard context.sourceMode == .auto,
+              context.settings?.claude?.cookieSource == .manual
+        else { return false }
+        return ClaudeWebFetchStrategy.hasManualSessionKey(context: context)
     }
 
     private static func manualCookieHeader(from context: ProviderFetchContext) -> String? {
@@ -519,9 +528,9 @@ struct ClaudeWebFetchStrategy: ProviderFetchStrategy {
         else {
             return false
         }
-        // In CLI runtime auto mode, web comes before CLI so fallback is required.
-        // In app runtime auto mode, web is terminal and should surface its concrete error.
-        return context.runtime == .cli
+        // Auto mode always places CLI after web when both are plausible. Preserve cancellation as
+        // terminal, but let ordinary web failures reach that final local fallback in either runtime.
+        return true
     }
 
     fileprivate static func hasManualSessionKey(context: ProviderFetchContext) -> Bool {

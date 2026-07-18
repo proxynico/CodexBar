@@ -58,17 +58,18 @@ struct ClaudeSourcePlannerTests {
     }
 
     @Test
-    func `app auto CLI fallback avoids web extras without a web session`() {
+    func `app auto CLI fallback avoids web extras without a reusable web session`() {
         let plan = ClaudeSourcePlanner.resolve(input: ClaudeSourcePlanningInput(
             runtime: .app,
             selectedDataSource: .auto,
-            webExtrasEnabled: false,
-            hasWebSession: false,
+            webExtrasEnabled: true,
+            hasWebSession: true,
+            hasReusableWebSession: false,
             hasCLI: true,
             hasOAuthCredentials: false))
 
-        #expect(plan.preferredStep?.dataSource == .cli)
-        #expect(plan.compatibilityStrategy == ClaudeUsageStrategy(dataSource: .cli, useWebExtras: false))
+        #expect(plan.preferredStep?.dataSource == .web)
+        #expect(!plan.cliFallbackUsesWebExtras)
     }
 
     @Test

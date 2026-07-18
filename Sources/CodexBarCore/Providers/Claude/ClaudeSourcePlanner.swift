@@ -5,6 +5,7 @@ public struct ClaudeSourcePlanningInput: Equatable, Sendable {
     public let selectedDataSource: ClaudeUsageDataSource
     public let webExtrasEnabled: Bool
     public let hasWebSession: Bool
+    public let hasReusableWebSession: Bool
     public let hasCLI: Bool
     public let hasOAuthCredentials: Bool
 
@@ -13,6 +14,7 @@ public struct ClaudeSourcePlanningInput: Equatable, Sendable {
         selectedDataSource: ClaudeUsageDataSource,
         webExtrasEnabled: Bool,
         hasWebSession: Bool,
+        hasReusableWebSession: Bool? = nil,
         hasCLI: Bool,
         hasOAuthCredentials: Bool)
     {
@@ -20,6 +22,7 @@ public struct ClaudeSourcePlanningInput: Equatable, Sendable {
         self.selectedDataSource = selectedDataSource
         self.webExtrasEnabled = webExtrasEnabled
         self.hasWebSession = hasWebSession
+        self.hasReusableWebSession = hasReusableWebSession ?? hasWebSession
         self.hasCLI = hasCLI
         self.hasOAuthCredentials = hasOAuthCredentials
     }
@@ -98,8 +101,8 @@ public struct ClaudeFetchPlan: Equatable, Sendable {
     /// web session so CLI-only setups do not trigger browser-cookie work.
     public var cliFallbackUsesWebExtras: Bool {
         self.input.runtime == .app &&
-            (self.input.webExtrasEnabled ||
-                (self.input.selectedDataSource == .auto && self.input.hasWebSession))
+            ((self.input.selectedDataSource == .cli && self.input.webExtrasEnabled) ||
+                (self.input.selectedDataSource == .auto && self.input.hasReusableWebSession))
     }
 
     public var orderLabel: String {
