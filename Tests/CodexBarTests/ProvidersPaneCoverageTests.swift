@@ -183,7 +183,7 @@ struct ProvidersPaneCoverageTests {
     }
 
     @Test
-    func `codex provider preview follows spark visibility`() {
+    func `codex provider preview hides extra metrics`() {
         let settings = Self.makeSettingsStore(suite: "ProvidersPaneCoverageTests-codex-spark-preview")
         let store = Self.makeUsageStore(settings: settings)
         let now = Date()
@@ -217,14 +217,14 @@ struct ProvidersPaneCoverageTests {
             provider: .codex)
         let pane = ProvidersPane(settings: settings, store: store)
 
-        #expect(pane._test_menuCardModel(for: .codex).metrics.contains {
-            $0.id == CodexAdditionalRateLimitMapper.sparkWindowID
-        })
+        let initialModel = pane._test_menuCardModel(for: .codex)
+        #expect(!initialModel.metrics.contains { $0.id == CodexAdditionalRateLimitMapper.sparkWindowID })
+        #expect(!initialModel.metrics.contains { $0.id == "codex-other-limit" })
 
         settings.codexSparkUsageVisible = false
         let hiddenModel = pane._test_menuCardModel(for: .codex)
         #expect(!hiddenModel.metrics.contains { $0.id == CodexAdditionalRateLimitMapper.sparkWindowID })
-        #expect(hiddenModel.metrics.contains { $0.id == "codex-other-limit" })
+        #expect(!hiddenModel.metrics.contains { $0.id == "codex-other-limit" })
     }
 
     @Test
