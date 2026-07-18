@@ -59,6 +59,12 @@ struct ClaudeOAuthDelegatedRefreshRecoveryTests {
 
     @Test
     func `silent keychain repair recovers without delegation`() async throws {
+        try await ClaudeOAuthKeychainPromptPreference.withTaskOverrideForTesting(.onlyOnUserAction) {
+            try await self.runSilentKeychainRepairTest()
+        }
+    }
+
+    private func runSilentKeychainRepairTest() async throws {
         let delegatedCounter = AsyncCounter()
         let usageResponse = try Self.makeOAuthUsageResponse()
         let tokenCapture = TokenCapture()
@@ -167,6 +173,12 @@ struct ClaudeOAuthDelegatedRefreshRecoveryTests {
 
     @Test
     func `delegated refresh attempted succeeded recovers after keychain sync`() async throws {
+        try await ClaudeOAuthKeychainPromptPreference.withTaskOverrideForTesting(.always) {
+            try await self.runDelegatedRefreshRecoveryTest()
+        }
+    }
+
+    private func runDelegatedRefreshRecoveryTest() async throws {
         let delegatedCounter = AsyncCounter()
         let usageResponse = try Self.makeOAuthUsageResponse()
         let tokenCapture = TokenCapture()
@@ -286,6 +298,12 @@ struct ClaudeOAuthDelegatedRefreshRecoveryTests {
     func `delegated refresh attempted succeeded background only on user action does not recover from keychain`()
         async throws
     {
+        try await ClaudeOAuthKeychainPromptPreference.withTaskOverrideForTesting(.onlyOnUserAction) {
+            try await self.runBackgroundDelegatedRefreshTest()
+        }
+    }
+
+    private func runBackgroundDelegatedRefreshTest() async throws {
         let delegatedCounter = AsyncCounter()
         let service = "com.steipete.codexbar.cache.tests.\(UUID().uuidString)"
 
