@@ -81,6 +81,7 @@ enum KeychainMigration {
         if let account = item.account {
             query[kSecAttrAccount as String] = account
         }
+        KeychainNoUIQuery.apply(to: &query)
 
         let status = KeychainSecurity.copyMatching(query as CFDictionary, &result)
 

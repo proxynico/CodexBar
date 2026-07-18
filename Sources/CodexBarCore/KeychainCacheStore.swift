@@ -1,6 +1,5 @@
 import Foundation
 #if os(macOS)
-import Darwin
 import Security
 #endif
 
@@ -179,9 +178,6 @@ public enum KeychainCacheStore {
         addQuery[kSecValueData as String] = data
         addQuery[kSecAttrLabel as String] = self.cacheLabel
         addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        if let access = self.cacheAccessControl() {
-            addQuery[kSecAttrAccess as String] = access
-        }
 
         let addStatus = KeychainSecurity.add(addQuery as CFDictionary, nil)
         if addStatus != errSecSuccess {
@@ -493,104 +489,6 @@ public enum KeychainCacheStore {
         }
     }
 
-    static func trustedApplicationPathsForCacheAccess(
-        bundleURL: URL = Bundle.main.bundleURL,
-        executableURL: URL? = Bundle.main.executableURL,
-        fileExists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) }) -> [String]
-    {
-        var paths: [String] = []
-        func append(_ path: String) {
-            guard !path.isEmpty, fileExists(path), !paths.contains(path) else { return }
-            paths.append(path)
-        }
-
-        let appBundle = self.appBundleURL(containing: bundleURL)
-            ?? executableURL.flatMap(self.appBundleURL(containing:))
-        if let appBundle {
-            append(appBundle.path)
-            append(appBundle.appendingPathComponent("Contents/Helpers/CodexBarCLI").path)
-        }
-        if let executableURL {
-            append(executableURL.path)
-        }
-        return paths
-    }
-
-    private static func appBundleURL(containing url: URL) -> URL? {
-        var current = url.standardizedFileURL
-        while current.path != "/" {
-            if current.pathExtension == "app" {
-                return current
-            }
-            current.deleteLastPathComponent()
-        }
-        return nil
-    }
-
-    private static func cacheAccessControl() -> SecAccess? {
-        let trustedPaths = self.trustedApplicationPathsForCacheAccess()
-        guard !trustedPaths.isEmpty else { return nil }
-
-        var trustedApplications: [SecTrustedApplication] = []
-        for path in trustedPaths {
-            let (status, application) = self.createTrustedApplication(path: path)
-            if status == errSecSuccess, let application {
-                trustedApplications.append(application)
-            } else {
-                self.log.error("Keychain cache trusted app creation failed (\(path)): \(status)")
-            }
-        }
-        guard !trustedApplications.isEmpty else { return nil }
-
-        let (status, access) = self.createAccessControl(trustedApplications: trustedApplications)
-        if status != errSecSuccess {
-            self.log.error("Keychain cache access control creation failed: \(status)")
-            return nil
-        }
-        return access
-    }
-
-    private typealias SecTrustedApplicationCreateFromPathFunction = @convention(c) (
-        UnsafePointer<CChar>?,
-        UnsafeMutablePointer<SecTrustedApplication?>?) -> OSStatus
-    private typealias SecAccessCreateFunction = @convention(c) (
-        CFString,
-        CFArray,
-        UnsafeMutablePointer<SecAccess?>?) -> OSStatus
-
-    private static func createTrustedApplication(path: String) -> (OSStatus, SecTrustedApplication?) {
-        guard let symbol = self.securitySymbol(named: "SecTrustedApplicationCreateFromPath") else {
-            return (errSecInternalComponent, nil)
-        }
-        let function = unsafeBitCast(symbol, to: SecTrustedApplicationCreateFromPathFunction.self)
-        var application: SecTrustedApplication?
-        let status = path.withCString { cPath in
-            function(cPath, &application)
-        }
-        return (status, application)
-    }
-
-    private static func createAccessControl(trustedApplications: [SecTrustedApplication]) -> (OSStatus, SecAccess?) {
-        guard let symbol = self.securitySymbol(named: "SecAccessCreate") else {
-            return (errSecInternalComponent, nil)
-        }
-        let function = unsafeBitCast(symbol, to: SecAccessCreateFunction.self)
-        var access: SecAccess?
-        let status = function(self.cacheLabel as CFString, trustedApplications as CFArray, &access)
-        return (status, access)
-    }
-
-    private nonisolated(unsafe) static let securityFrameworkHandle: UnsafeMutableRawPointer? = {
-        let securityPath = "/System/Library/Frameworks/Security.framework/Security"
-        return dlopen(securityPath, RTLD_NOW)
-    }()
-
-    private static func securitySymbol(named name: String) -> UnsafeMutableRawPointer? {
-        // Resolve deprecated SecKeychain ACL helpers at runtime so release builds stay warning-free
-        // while still granting the app bundle and bundled CLI prompt-free access to cache entries.
-        guard let securityFrameworkHandle else { return nil }
-        return dlsym(securityFrameworkHandle, name)
-    }
     #endif
 
     private static func loadFromTestStore<Entry: Codable>(

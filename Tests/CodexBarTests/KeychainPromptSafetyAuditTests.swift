@@ -142,6 +142,45 @@ struct KeychainPromptSafetyAuditTests {
         #expect(offenders.isEmpty, "Security item access bypasses KeychainSecurity: \(offenders.map(\.path))")
     }
 
+    @Test
+    func `background source keychain reads use no UI queries`() throws {
+        let allowedManualCallSites = Set([
+            "Sources/CodexBarCore/KeychainAccessPreflight.swift",
+            "Sources/CodexBarCore/KeychainSecurity.swift",
+            "Sources/CodexBarCore/Providers/Claude/ClaudeOAuth/ClaudeOAuthCredentials.swift",
+            "Sources/CodexBarCore/Providers/Claude/ClaudeOAuth/ClaudeOAuthKeychainQueryTiming.swift",
+            "Sources/CodexBarCore/Providers/Zed/ZedStatusProbe.swift",
+        ])
+        let sourcesRoot = Self.repoRoot().appendingPathComponent("Sources", isDirectory: true)
+        let offenders = try Self.swiftFiles(under: sourcesRoot).flatMap { file -> [String] in
+            let relativePath = Self.relativePath(file)
+            guard !allowedManualCallSites.contains(relativePath) else { return [] }
+
+            let lines = try Self.lines(in: file)
+            return lines.enumerated().compactMap { index, line in
+                guard line.contains("SecItemCopyMatching") || line.contains("KeychainSecurity.copyMatching") else {
+                    return nil
+                }
+                let contextStart = max(lines.startIndex, index - 20)
+                let hasNoUIQuery = lines[contextStart...index].contains { contextLine in
+                    contextLine.contains("KeychainNoUIQuery.apply(to: &query)")
+                }
+                return hasNoUIQuery ? nil : "\(relativePath):\(index + 1)"
+            }
+        }
+
+        #expect(offenders.isEmpty, "Production keychain reads missing KeychainNoUIQuery: \(offenders)")
+    }
+
+    @Test
+    func `keychain cache writes do not attach legacy ACLs`() throws {
+        let cacheStore = try Self.readRepoFile("Sources/CodexBarCore/KeychainCacheStore.swift")
+
+        #expect(!cacheStore.contains("kSecAttrAccess as String"))
+        #expect(!cacheStore.contains("SecAccessCreate"))
+        #expect(!cacheStore.contains("SecTrustedApplicationCreateFromPath"))
+    }
+
     private static func repoRoot() -> URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -183,6 +222,13 @@ struct KeychainPromptSafetyAuditTests {
             }
         }
         return files
+    }
+
+    private static func relativePath(_ url: URL) -> String {
+        let rootPath = self.repoRoot().standardizedFileURL.path
+        let filePath = url.standardizedFileURL.path
+        guard filePath.hasPrefix(rootPath + "/") else { return filePath }
+        return String(filePath.dropFirst(rootPath.count + 1))
     }
 
     private static func hasOpenKeychainTestDouble(lines: [Substring], before oneBasedLineNumber: Int) -> Bool {
