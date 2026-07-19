@@ -1,52 +1,45 @@
 ---
-summary: "Homebrew Cask release steps for CodexBar (Sparkle-disabled builds)."
+summary: "Official-upstream Homebrew release reference; disabled for Nico's fork."
 read_when:
-  - Publishing a CodexBar release via Homebrew
-  - Updating the Homebrew tap cask definition
+  - Reviewing the official CodexBar Homebrew release path
+  - Deciding whether to create a separate fork release channel
 ---
 
-# CodexBar Homebrew Release Playbook
+# Homebrew release reference
 
-Homebrew is for the UI app via Cask. When installed via Homebrew, CodexBar disables Sparkle and shows a "update via brew" hint in About.
+> [!WARNING]
+> Authorized official-upstream release only. Nico's fork is not configured to publish GitHub, Sparkle, Homebrew Cask,
+> or CLI formula releases. The upstream `.github/workflows/release-cli.yml` workflow is intentionally absent here.
 
-## Prereqs
-- Homebrew installed.
-- Access to the tap repo: `../homebrew-tap`.
+Homebrew installs the UI app through a Cask. Those builds disable Sparkle and show an "update via brew" hint in
+About. The official project also publishes a standalone CLI formula.
 
-## 1) Release CodexBar normally
-Follow `docs/RELEASING.md` to publish `CodexBar-macos-universal-<version>.zip` to GitHub Releases.
+## Current fork state
 
-## 2) Let the Release CLI workflow update the tap
-After the GitHub release is published, `.github/workflows/release-cli.yml` builds the standalone CLI assets and dispatches `steipete/homebrew-tap`'s `update-formula.yml`. That tap workflow updates both:
-- `Casks/codexbar.rb` for the app zip.
-- `Formula/codexbar.rb` for the standalone CLI tarballs.
+- `.mac-release.env` targets `steipete/CodexBar` and the official appcast.
+- The release CLI workflow that builds assets and dispatches `steipete/homebrew-tap` is not present in this fork.
+- Normal fork work stops at `./Scripts/package_app.sh` unless Nico explicitly authorizes a separate publication
+  project.
 
-If dispatch fails or is rate-limited, update the files manually.
+Do not edit or push `steipete/homebrew-tap` from this checkout.
 
-## 2a) Manual cask update
-In `../homebrew-tap`, update the cask at `Casks/codexbar.rb`:
-- `url` points at the GitHub release asset: `.../releases/download/v<version>/CodexBar-macos-universal-<version>.zip`
-- Update `sha256` to match that zip.
-- Keep `depends_on macos: ">= :sonoma"` (CodexBar is macOS 14+). Do not add an architecture restriction; the app zip is universal.
+## Official-upstream reference
 
-## 2b) Manual formula update
-In `../homebrew-tap`, update the formula at `Formula/codexbar.rb`:
-- `url` points at the GitHub release assets:
-  - macOS: `.../releases/download/v<version>/CodexBarCLI-v<version>-macos-arm64.tar.gz`
-  - macOS: `.../releases/download/v<version>/CodexBarCLI-v<version>-macos-x86_64.tar.gz`
-  - Linux: `.../releases/download/v<version>/CodexBarCLI-v<version>-linux-aarch64.tar.gz`
-  - Linux: `.../releases/download/v<version>/CodexBarCLI-v<version>-linux-x86_64.tar.gz`
-- Static musl tarballs are also published for manual Linux installs as `linux-musl-aarch64` and `linux-musl-x86_64`; keep the formula on the glibc assets unless intentionally changing its runtime contract.
-- Update all `sha256` values to match those tarballs.
+In the authorized official flow, the release workflow publishes the universal app zip and platform CLI tarballs,
+then updates:
 
-## 3) Verify install
-```sh
-brew uninstall --cask codexbar || true
-brew untap steipete/tap || true
-brew tap steipete/tap
-brew install --cask steipete/tap/codexbar
-open -a CodexBar
-```
+- `Casks/codexbar.rb` with the app zip URL and SHA-256.
+- `Formula/codexbar.rb` with macOS and glibc Linux CLI tarball URLs and SHA-256 values.
 
-## 4) Push tap changes
-Commit + push in the tap repo.
+Static musl CLI tarballs are release assets but are not the default Homebrew Linux runtime contract.
+
+Official verification includes reinstalling `steipete/tap/codexbar`, checking the app signature and version, and
+verifying that every referenced release asset exists. Those steps are external publication checks, not fork
+development validation.
+
+## Enabling a fork Homebrew channel
+
+A future fork channel needs explicit choices for repository, release assets, app bundle identity, signing team,
+Sparkle behavior, tap ownership, formula/cask names, update automation, and rollback. Follow
+[RELEASING.md](RELEASING.md#enabling-a-future-fork-release); do not reuse official credentials or endpoints by
+default.

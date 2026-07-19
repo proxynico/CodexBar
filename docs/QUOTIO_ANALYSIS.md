@@ -7,6 +7,11 @@ read_when:
 
 # Quotio Analysis & Pattern Adaptation
 
+> [!NOTE]
+> Historical research template from the former fork roadmap. Quotio is not part of Nico's upstream sync chain, and
+> the unchecked comparisons below are not current product facts. Re-verify the external repository and current
+> CodexBar code before using any item as a proposal.
+
 **Purpose:** Learn from quotio's implementation patterns without copying code  
 **Repository:** https://github.com/nguyenphutrong/quotio  
 **Approach:** Analyze patterns, implement independently

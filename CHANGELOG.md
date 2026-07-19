@@ -2,6 +2,18 @@
 
 ## 0.45.0 — 2026-07-18
 
+### Nico fork integration
+- Rebase the fork on the complete upstream 0.45.0/build 107 source while keeping the upstream provider, menu-layout,
+  agent-session, spend-dashboard, adaptive-refresh, and quota-forecasting work.
+- Keep Codex cards compact by hiding additional quota rows, credit balances, and buy-credit actions; hide only the
+  Claude routines row from Claude model-specific limits.
+- Make Claude Auto mode try OAuth, web, then CLI; allow normal web failures to reach CLI while keeping cancellation
+  terminal, and reuse only an existing manual web session for CLI enrichment.
+- Show an exhausted Claude extra-usage cap as the primary blocking window.
+- Keep passive Keychain reads non-interactive, remove deprecated trusted-app ACL writes, preserve temporarily
+  unavailable cache data, and skip unchanged cookie-cache writes.
+- Align status-item observation signatures with rendered icon buckets to avoid redraw work for invisible changes.
+
 ### Added
 - Menu bar: add drag-and-drop layouts with customizable identity, usage, reset, cost, spacing, and stacked-line tokens (#2275).
 - Usage: estimate weekly quota in full 5-hour windows and show whether it can run out before reset (#2261). Thanks @hdsheena!

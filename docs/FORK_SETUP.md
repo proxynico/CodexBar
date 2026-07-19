@@ -1,334 +1,107 @@
 ---
-summary: "Fork setup: remote configuration and multi-upstream workflow."
+summary: "Nico fork setup: canonical remotes, branches, validation, and rollback."
 read_when:
-  - Setting up fork remotes
-  - Syncing with upstreams
+  - Setting up Nico's CodexBar checkout
+  - Syncing with the official upstream
+  - Recovering from an upstream integration
 ---
 
-# Fork Setup & Initial Configuration
+# Fork setup
 
-**One-time setup for managing your CodexBar fork with multiple upstreams**
+## Canonical remotes
 
----
-
-## 🎯 Quick Setup
-
-### Step 1: Configure Git Remotes
+Nico's checkout deliberately names the official repository `origin` and the writable fork `fork`:
 
 ```bash
-# Verify your fork is origin
+git remote set-url origin https://github.com/steipete/CodexBar.git
+git remote add fork https://github.com/proxynico/CodexBar.git
 git remote -v
-# Should show: origin  git@github.com:topoffunnel/CodexBar.git
-
-# Add upstream (steipete's original)
-git remote add upstream https://github.com/steipete/CodexBar.git
-
-# Add quotio (inspiration source)
-git remote add quotio https://github.com/nguyenphutrong/quotio.git
-
-# Fetch all remotes
-git fetch --all
-
-# Verify setup
-git remote -v
-# Should show:
-# origin    git@github.com:topoffunnel/CodexBar.git (fetch/push)
-# upstream  https://github.com/steipete/CodexBar.git (fetch/push)
-# quotio    https://github.com/nguyenphutrong/quotio.git (fetch/push)
 ```
 
-### Step 2: Test Automation Scripts
+If `fork` already exists, use `git remote set-url fork ...` instead of adding it. Expected output:
+
+```text
+fork    https://github.com/proxynico/CodexBar.git (fetch)
+fork    https://github.com/proxynico/CodexBar.git (push)
+origin  https://github.com/steipete/CodexBar.git (fetch)
+origin  https://github.com/steipete/CodexBar.git (push)
+```
+
+The local `main` branch tracks `fork/main`:
 
 ```bash
-# Make scripts executable (if not already)
-chmod +x Scripts/*.sh
-
-# Test upstream monitoring
-./Scripts/check_upstreams.sh
-
-# Should show:
-# - Number of new commits in upstream
-# - Number of new commits in quotio
-# - File change summary
+git branch --set-upstream-to=fork/main main
 ```
 
-### Step 3: Initial Upstream Review
+## First verification
 
 ```bash
-# Check what's new in upstream
-./Scripts/check_upstreams.sh upstream
-
-# Review changes in detail
-./Scripts/review_upstream.sh upstream
-
-# This creates a review branch: upstream-sync/upstream-YYYYMMDD
+git fetch --all --prune
+git status --short --branch
+git branch -vv
+git log -5 --oneline --decorate
 ```
 
-### Step 4: Initial Quotio Analysis
+For the completed 0.45 integration, `main` should descend from upstream commit
+`2ccb4525687c92ff1cd50c8c57f24420c1fcb71f`. The recovery branch
+`fork/codex/pre-upstream-0.45-safety-20260718` preserves the prior fork at
+`9bbef21c877122f3e291128928781e3f3104eff0`.
+
+## Normal change workflow
 
 ```bash
-# Analyze quotio repository
-./Scripts/analyze_quotio.sh
-
-# Creates: quotio-analysis-YYYYMMDD.md
-# Review the file for interesting patterns
-```
-
----
-
-## ⚠️ Critical Discovery: Upstream Removed Augment
-
-**IMPORTANT:** Upstream (steipete) has removed the Augment provider in recent commits!
-
-```
-Files changed:
- .../Providers/Augment/AugmentStatusProbe.swift     | 627 deletions
- Tests/CodexBarTests/AugmentStatusProbeTests.swift  |  88 deletions
-```
-
-**This validates our fork strategy:**
-- ✅ Your fork preserves Augment support
-- ✅ You can continue developing Augment features
-- ✅ Upstream changes won't break your Augment work
-- ✅ You maintain features important to your users
-
-**Action Required:**
-When syncing with upstream, you'll need to:
-1. Cherry-pick valuable changes (Vertex AI improvements, bug fixes)
-2. **Avoid** merging commits that remove Augment
-3. Keep your Augment implementation separate
-
----
-
-## 🔄 Regular Workflow
-
-### Weekly Upstream Check (Recommended: Monday)
-
-```bash
-# Check for new changes
-./Scripts/check_upstreams.sh
-
-# If changes found, review them
-./Scripts/review_upstream.sh upstream
-
-# Cherry-pick valuable commits (skip Augment removal)
-git cherry-pick <commit-hash>
-
-# Test
-./Scripts/compile_and_run.sh
-
-# Merge to main
-git checkout main
-git merge upstream-sync/upstream-$(date +%Y%m%d)
-```
-
-### Weekly Quotio Review (Recommended: Thursday)
-
-```bash
-# Analyze recent quotio changes
-./Scripts/analyze_quotio.sh
-
-# Review specific files of interest
-git show quotio/main:path/to/interesting/file.swift
-
-# Document patterns in docs/QUOTIO_ANALYSIS.md
-```
-
----
-
-## 📋 Selective Sync Strategy
-
-### What to Sync from Upstream
-
-✅ **DO sync:**
-- Bug fixes (non-Augment)
-- Performance improvements
-- New provider support (Vertex AI, etc.)
-- Documentation improvements
-- Test improvements
-- Dependency updates
-
-❌ **DON'T sync:**
-- Augment provider removal
-- Changes that conflict with fork features
-- Breaking changes without careful review
-
-### How to Cherry-Pick Selectively
-
-```bash
-# Review upstream commits
-git log --oneline main..upstream/main
-
-# Example output:
-# 001019c style: fix swiftformat violations ✅ SYNC
-# e4f1e4c feat(vertex): add token cost tracking ✅ SYNC
-# 202efde fix(vertex): disable double-counting ✅ SYNC
-# 0c2f888 docs: add Vertex AI documentation ✅ SYNC
-# 3c4ca30 feat(vertexai): token cost tracking ✅ SYNC
-# abc123d refactor: remove Augment provider ❌ SKIP
-
-# Cherry-pick the good ones
-git cherry-pick 001019c
-git cherry-pick e4f1e4c
-git cherry-pick 202efde
-git cherry-pick 0c2f888
-git cherry-pick 3c4ca30
-# Skip abc123d (Augment removal)
-```
-
----
-
-## 🎨 Quotio Pattern Learning
-
-### Ethical Guidelines
-
-**DO:**
-- ✅ Analyze their architecture and patterns
-- ✅ Learn from their UX decisions
-- ✅ Understand their approach to problems
-- ✅ Implement similar concepts independently
-- ✅ Credit inspiration in commits
-
-**DON'T:**
-- ❌ Copy code verbatim
-- ❌ Use their assets or branding
-- ❌ Violate their license
-- ❌ Claim their work as yours
-
-### Analysis Workflow
-
-```bash
-# 1. Fetch latest quotio
-git fetch quotio
-
-# 2. Analyze structure
-./Scripts/analyze_quotio.sh
-
-# 3. Review specific areas
-git show quotio/main:path/to/AccountManager.swift
-
-# 4. Document patterns (not code!)
-# Edit docs/QUOTIO_ANALYSIS.md
-
-# 5. Implement independently
-# Create feature branch
-git checkout -b quotio-inspired/multi-account
-
-# 6. Commit with attribution
-git commit -m "feat: multi-account management
-
-Inspired by quotio's account switching pattern:
-https://github.com/nguyenphutrong/quotio/...
-
-Implemented independently using CodexBar architecture."
-```
-
----
-
-## 🚀 Contributing to Upstream
-
-### When to Contribute
-
-**Good candidates:**
-- Universal bug fixes
-- Performance improvements
-- Documentation improvements
-- Test coverage
-- Provider enhancements (non-fork-specific)
-
-**Keep in fork:**
-- Augment provider (they removed it)
-- Multi-account management (major change)
-- Fork branding
-- Experimental features
-
-### Contribution Workflow
-
-```bash
-# 1. Prepare clean branch from upstream
-./Scripts/prepare_upstream_pr.sh fix-cursor-bonus
-
-# 2. Cherry-pick your fix (without fork branding)
-git cherry-pick <your-commit-hash>
-
-# 3. Review - ensure no fork-specific code
-git diff upstream/main
-
-# 4. Test
+git switch -c codex/short-topic
+# edit and run focused tests
 make test
-
-# 5. Push to your fork
-git push origin upstream-pr/fix-cursor-bonus
-
-# 6. Create PR on GitHub
-# Go to: https://github.com/steipete/CodexBar
-# Click "New Pull Request"
-# Select: base: steipete:main <- compare: topoffunnel:upstream-pr/fix-cursor-bonus
+make check
+git status --short
+git diff --check
+git push -u fork codex/short-topic
 ```
 
----
+Do not run live provider probes, browser-cookie imports, real account usage commands, or ad hoc Security.framework
+reads as routine validation. They can display macOS Keychain prompts. Use parser tests, stubs, test stores, and
+`KeychainNoUIQuery` seams.
 
-## 🤖 Automated Monitoring
+## Upstream refresh workflow
 
-### GitHub Actions Setup
+For small, isolated upstream changes, inspect the exact commits and cherry-pick only after checking conflicts with
+fork behavior.
 
-The workflow `.github/workflows/upstream-monitor.yml` will:
-- Run Monday and Thursday at 9 AM UTC
-- Check for new commits in both upstreams
-- Create/update GitHub issue with summary
-- Provide links to review changes
+For a large release jump:
 
-**To enable:**
-1. Push the workflow file to your fork
-2. Enable GitHub Actions in repository settings
-3. Issues will be created automatically
+1. Require a clean working tree and verify local `main` equals the intended `fork/main` head.
+2. Fetch and pin the exact upstream commit.
+3. Push a dated safety branch from the verified `fork/main` ref.
+4. Create an isolated worktree and `codex/upstream-<version>-integration` branch from the pinned upstream commit.
+5. Port only the fork behavior that still matters, one focused change at a time, with focused tests.
+6. Run `make test`, `make check`, and `git diff --check`.
+7. Run `./Scripts/compile_and_run.sh` only if UI or bundle-runtime proof is required.
+8. Review the entire fork-only diff from the pinned upstream commit.
+9. Push the integration branch to `fork` before moving `fork/main`.
+10. Install and observe the app only when Nico explicitly includes installation in scope.
 
-**Manual trigger:**
-```bash
-# Via GitHub UI: Actions → Monitor Upstream Changes → Run workflow
-```
+The detailed policy and rollback commands are in [Upstream Strategy](UPSTREAM_STRATEGY.md).
 
----
+## Legacy helper scripts
 
-## 📊 Verification Checklist
+`Scripts/check_upstreams.sh`, `Scripts/review_upstream.sh`, and `Scripts/prepare_upstream_pr.sh` were inherited from an
+older remote layout. They expect a remote named `upstream`; `prepare_upstream_pr.sh` also assumes `origin` is the
+writable fork. That is not Nico's canonical layout. Prefer the direct Git commands in the current docs unless the
+script has first been reviewed for the active remotes.
 
-After setup, verify:
+`Scripts/analyze_quotio.sh` is an optional research helper. Quotio is not part of the fork's source or sync chain.
 
-- [ ] All three remotes configured (origin, upstream, quotio)
-- [ ] Scripts are executable
-- [ ] `./Scripts/check_upstreams.sh` runs successfully
-- [ ] Can create review branch with `./Scripts/review_upstream.sh`
-- [ ] Can analyze quotio with `./Scripts/analyze_quotio.sh`
-- [ ] GitHub Actions workflow is present
-- [ ] Understand Augment removal in upstream
-- [ ] Know how to cherry-pick selectively
-- [ ] Know when to contribute upstream vs keep in fork
+## Automation policy
 
----
+The fork intentionally does not carry upstream GitHub CI, release, or upstream-monitor workflows. Local validation
+is the source of truth. Adding or restoring external automation requires explicit approval.
 
-## 🔗 Next Steps
+## Setup checklist
 
-1. **Review Current Upstream Changes**
-   ```bash
-   ./Scripts/review_upstream.sh upstream
-   ```
-
-2. **Decide on Sync Strategy**
-   - Which commits to cherry-pick?
-   - How to handle Augment removal?
-   - See `docs/UPSTREAM_STRATEGY.md`
-
-3. **Start Quotio Analysis**
-   ```bash
-   ./Scripts/analyze_quotio.sh
-   # Then edit docs/QUOTIO_ANALYSIS.md
-   ```
-
-4. **Update Fork Roadmap**
-   - Review `docs/FORK_ROADMAP.md`
-   - Adjust based on upstream changes
-   - Plan fork-specific features
-
----
-
-**Setup Complete!** You now have a robust system for managing your fork while learning from multiple sources.
+- [ ] `origin` points to `steipete/CodexBar`.
+- [ ] `fork` points to `proxynico/CodexBar`.
+- [ ] Local `main` tracks `fork/main`.
+- [ ] `git fetch --all --prune` succeeds.
+- [ ] `make test` and `make check` pass without live account or Keychain probes.
+- [ ] The maintainer understands the safety-branch and clean-base integration workflow.

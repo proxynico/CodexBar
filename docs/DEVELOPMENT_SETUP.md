@@ -1,179 +1,149 @@
 ---
-summary: "Development setup: stable signing and reducing Keychain prompts."
+summary: "Development setup: safe validation, stable signing, and bundle relaunch."
 read_when:
   - Setting up local development
+  - Choosing tests versus bundle validation
   - Reducing Keychain prompts during rebuilds
-  - Configuring dev signing
 ---
 
-# Development Setup Guide
+# Development setup
 
-## Reducing Keychain Permission Prompts
+## Requirements
 
-When developing CodexBar, you may see frequent keychain permission prompts like:
+- macOS 14 or newer.
+- Swift 6.2 or newer from Xcode.
+- SwiftFormat and SwiftLint for `make check`.
+- The existing SwiftPM checkout; do not add another package manager.
 
-> **CodexBar wants to access key "Claude Code-credentials" in your keychain.**
+## Safe default workflow
 
-This happens because each rebuild creates a new code signature, and macOS treats it as a "different" app.
-That can affect both CodexBar-owned entries (`com.steipete.CodexBar`, `com.steipete.codexbar.cache`) and
-third-party items such as `Claude Code-credentials`, so an ad-hoc-signed rebuild can keep re-triggering
-password/keychain approval dialogs even after you previously chose **Always Allow**.
-
-### Quick Fix (Temporary)
-
-When the prompt appears, click **"Always Allow"** instead of just "Allow". This grants access to the current build.
-
-### Permanent Fix (Recommended)
-
-Use a stable development certificate that doesn't change between rebuilds:
-
-#### 1. Create Development Certificate
+Most provider, parser, settings, and storage changes do not need an app rebuild:
 
 ```bash
-./Scripts/setup_dev_signing.sh
-```
-
-This creates a self-signed certificate named "CodexBar Development".
-
-#### 2. Trust the Certificate
-
-1. Open **Keychain Access.app**
-2. Find **"CodexBar Development"** in the **login** keychain
-3. Double-click it
-4. Expand the **"Trust"** section
-5. Set **"Code Signing"** to **"Always Trust"**
-6. Close the window (enter your password when prompted)
-
-#### 3. Configure Your Shell
-
-Add this to your `~/.zshrc` (or `~/.bashrc` if using bash):
-
-```bash
-export APP_IDENTITY='CodexBar Development'
-```
-
-Then restart your terminal:
-
-```bash
-source ~/.zshrc
-```
-
-#### 4. Rebuild
-
-```bash
-./Scripts/compile_and_run.sh
-```
-
-Now your builds will use the stable certificate, and keychain prompts will be much less frequent!
-
-> Note: `compile_and_run.sh` now auto-detects a valid signing identity (Developer ID or CodexBar Development).
-> Set `APP_IDENTITY` to override the auto-detected choice.
-
----
-
-## Cleaning Up Old App Bundles
-
-If you see multiple `CodexBar *.app` bundles in your project directory, you can clean them up:
-
-```bash
-# Remove all numbered builds
-rm -rf "CodexBar "*.app
-
-# The .gitignore already excludes these patterns:
-# - CodexBar.app
-# - CodexBar *.app/
-```
-
-The build script creates `CodexBar.app` in the project root. Old numbered builds (like `CodexBar 2.app`) are created when Finder can't overwrite the running app.
-
----
-
-## Development Workflow
-
-### Standard Build & Run
-
-```bash
-./Scripts/compile_and_run.sh
-```
-
-This script:
-1. Kills existing CodexBar instances
-2. Runs `swift build` (release mode)
-3. Runs the sharded full test suite when `--test` is passed
-4. Packages the app with `./Scripts/package_app.sh`
-5. Launches `CodexBar.app`
-6. Verifies it stays running
-
-Launching an unbundled `CodexBar` executable, including SwiftPM builds using `.build` or a custom scratch path, disables
-Keychain access for that process to avoid repeated password prompts. Use the packaged `CodexBar.app` when local
-validation needs browser cookies or stored credentials; packaged app bundles keep their normal Keychain behavior
-regardless of signing mode.
-
-When the script falls back to ad-hoc signing, it preserves CodexBar-owned keychain state by default.
-That means you may still see keychain prompts for existing CodexBar cache entries, but allowing those prompts keeps the
-cached browser/OAuth state available across normal rebuilds.
-If you want a clean reset of CodexBar-owned keychain state for an ad-hoc build, run
-`./Scripts/compile_and_run.sh --clear-adhoc-keychain` before relaunching.
-Third-party keychain items still need stable signing if you want macOS to remember **Always Allow** across rebuilds.
-
-### Quick Build (No Tests)
-
-```bash
-swift build -c release
-./Scripts/package_app.sh
-```
-
-### Run Tests Only
-
-```bash
+swift test --filter ClaudeSourcePlannerTests
 make test
+make check
 ```
 
-### Debug Build
+`make test` is the required full sharded suite before handoff. Run `make check` after every code change. Do not run
+live provider probes, browser-cookie imports, `codexbar usage` against real accounts, or ad hoc real Keychain reads as
+routine validation. Use fixtures, stubs, test stores, and `KeychainNoUIQuery`.
+
+## Bundle workflow
+
+Run the bundle loop only when UI, AppKit wiring, packaging, signing, launch, widgets, or runtime behavior needs proof:
 
 ```bash
-swift build  # defaults to debug
-./Scripts/package_app.sh debug
+./Scripts/compile_and_run.sh
 ```
 
----
+The script:
+
+1. Prevents concurrent runs for the same checkout.
+2. Quits every process named `CodexBar` or matching a CodexBar app/debug/release executable, including an installed
+   `/Applications/CodexBar.app`, and cleans up orphaned Claude probe processes.
+3. Builds and packages `CodexBar.app`.
+4. Uses a valid installed code-signing identity when one is available, otherwise falls back to ad hoc signing.
+5. Launches the repo-local app and confirms it stays running.
+
+Pass `--test` only when the bundle-level check also needs the full sharded suite. Pass `--wait` when another
+`compile_and_run.sh` process holds this checkout's wrapper lock. It does not coordinate arbitrary SwiftPM commands;
+do not start competing `swift build` or `swift test` processes against the same `.build` directory.
+
+## Signing
+
+Do not configure `APP_IDENTITY='CodexBar Development'`. That old self-signed identity is not usable with the bundled
+framework library-validation path. `compile_and_run.sh` deliberately ignores it and looks for a valid installed
+Developer ID, Apple Development, or Apple Distribution identity.
+
+Usually no environment override is needed. To use a specific installed identity:
+
+```bash
+security find-identity -p codesigning -v
+export APP_IDENTITY='Apple Development: Your Name (TEAMID)'
+./Scripts/compile_and_run.sh
+```
+
+If the named identity is missing, the script warns, continues identity discovery, and uses ad hoc signing only when
+no valid identity exists.
+
+An unbundled SwiftPM executable has Keychain access disabled by design. Use the packaged app only when an explicitly
+approved runtime check needs browser cookies or stored credentials.
+
+## Relaunch the correct local bundle
+
+```bash
+./Scripts/package_app.sh
+pkill -x CodexBar || pkill -f CodexBar.app || true
+cd /Users/nicolasmontero/Developer/tools/codexbar
+open -n /Users/nicolasmontero/Developer/tools/codexbar/CodexBar.app
+```
+
+This launches the repo-local bundle. It does not replace `/Applications/CodexBar.app`. When installed-app behavior is
+in scope, verify the running executable path and installed Info.plist separately.
+
+## Ad hoc signing and Keychain state
+
+Ad hoc builds have an unstable app identity and can cause macOS authorization churn. The build script preserves
+CodexBar-owned Keychain state by default; it does not promise that third-party Keychain items will remain prompt-free.
+
+Use the destructive reset flag only when intentionally testing a clean CodexBar-owned cache:
+
+```bash
+./Scripts/compile_and_run.sh --clear-adhoc-keychain
+```
+
+Do not use that flag during ordinary validation.
+
+## Common commands
+
+```bash
+swift build                         # debug build
+swift build -c release              # release build
+swift test --filter ClaudeSourcePlannerTests  # focused test example
+make test                           # full sharded suite
+make check                          # format and lint gate
+./Scripts/package_app.sh            # package without relaunch
+./Scripts/launch.sh                 # launch existing repo-local bundle
+```
 
 ## Troubleshooting
 
-### "CodexBar is already running"
-
-The compile_and_run script should kill old instances, but if it doesn't:
+### The app is already running
 
 ```bash
 pkill -x CodexBar || pkill -f CodexBar.app || true
 ```
 
-### "Permission denied" when accessing keychain
+Then rerun `./Scripts/compile_and_run.sh`.
 
-Make sure you clicked **"Always Allow"** or set up the development certificate (see above).
+### The app does not reflect the latest code
 
-### Multiple app bundles keep appearing
-
-This happens when the running app locks the bundle. The compile_and_run script handles this by killing the app first.
-
-If you still see old bundles:
+Confirm the active process path:
 
 ```bash
-rm -rf "CodexBar "*.app
+pgrep -fl 'CodexBar.app/Contents/MacOS/CodexBar'
 ```
 
-### App doesn't reflect latest changes
+Quit all copies, package again, and launch the absolute repo-local path above.
 
-Always rebuild and restart:
+### Keychain prompts appear
+
+Stop the live probe first. Confirm which app or binary the macOS prompt names, then follow
+[Keychain prompt troubleshooting](keychain-prompts.md). Routine tests should not display a Keychain prompt.
+
+### A build is already in progress
+
+Do not start a second SwiftPM test/build against the same `.build` directory. Wait for a standalone `swift build` or
+`swift test` command to finish. Use `./Scripts/compile_and_run.sh --wait` only when another instance of that wrapper
+holds its checkout-specific lock.
+
+### Reset the legacy migration flag
+
+Only for a targeted migration test:
 
 ```bash
-./Scripts/compile_and_run.sh
+defaults delete com.steipete.codexbar KeychainMigrationV1Completed
 ```
 
-Or manually:
-
-```bash
-./Scripts/package_app.sh
-pkill -x CodexBar || pkill -f CodexBar.app || true
-open -n CodexBar.app
-```
+This can change runtime behavior on the next launch. It is not a routine repair step.

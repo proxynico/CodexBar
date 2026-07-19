@@ -9,9 +9,8 @@ read_when:
 
 # Claude provider
 
-Claude supports three usage data paths plus local cost usage. The main provider pipeline uses runtime-specific
-automatic selection, but the codebase still has multiple active Claude `.auto` decision sites while the refactor is
-pending. For the exact current-state parity contract, see
+Claude supports three usage data paths plus local cost usage. The provider pipeline builds one runtime-specific fetch
+plan and keeps explicit source modes separate from Auto fallback. For lower-level seams and token-account routing, see
 [docs/refactor/claude-current-baseline.md](refactor/claude-current-baseline.md).
 
 When an Anthropic Admin API key is configured, Claude can also show organization-level spend/messages/tokens in the
@@ -21,17 +20,20 @@ same inline dashboard pattern used by the OpenAI API provider.
 
 ### Default selection (debug menu disabled)
 - If an Admin API key is configured, the Admin API strategy is used for Claude API spend/usage.
-- App runtime main pipeline: OAuth API → CLI PTY → Web API.
+- App runtime main pipeline: OAuth API → Web API → CLI PTY.
 - CLI runtime main pipeline: Web API → CLI PTY.
 - Explicit picker modes (OAuth/Web/CLI) bypass automatic fallback.
-- A lower-level direct Claude fetcher still contains a separate `.auto` order. That inconsistency is tracked in
-  [docs/refactor/claude-current-baseline.md](refactor/claude-current-baseline.md).
+- In App Auto mode, the web step is included only when a plausible session source exists. Ordinary web failures may
+  continue to CLI, while cancellation is terminal.
+- If Auto reaches CLI, model-limit enrichment reuses only an already configured manual web session. It does not start
+  browser-cookie discovery merely to add web extras.
 
 Usage source picker:
 - Preferences → Providers → Claude → Usage source (Auto/OAuth/Web/CLI).
 
 Admin API key setup:
-- Preferences → Providers → Claude → Admin API key, stored in `~/.codexbar/config.json`.
+- Preferences → Providers → Claude → Admin API key, stored in the resolved config file. New installs use
+  `~/.config/codexbar/config.json`; existing legacy installs can continue using `~/.codexbar/config.json`.
 - CLI/env: `printf '%s' "$ANTHROPIC_ADMIN_KEY" | codexbar config set-api-key --provider claude --stdin`.
 - Token accounts can also hold `sk-ant-admin...` keys; they route to the Admin API instead of cookie/OAuth usage.
 - Environment fallback: `ANTHROPIC_ADMIN_KEY`.
@@ -77,11 +79,14 @@ Admin API key setup:
   - `seven_day` → weekly window; also becomes the primary fallback when `five_hour` is absent or has no utilization.
   - `seven_day_sonnet` / `seven_day_opus` → model-specific weekly window.
   - `limits[].weekly_scoped` → model-specific weekly windows; generic `All models` scopes stay in the main weekly row.
-  - `seven_day_routines` / `seven_day_cowork` → Daily Routines extra window.
+  - `seven_day_routines` / `seven_day_cowork` → Daily Routines extra window in the snapshot. This fork hides that
+    row from the Claude menu card while preserving other model-specific rows.
   - Claude Design/Omelette keys are ignored because Claude Design shares the main Claude usage limit.
   - `extra_usage` → Extra usage cost (monthly spend/limit).
 - Successful OAuth login enables Claude and preserves the selected usage source. With the default Auto source, OAuth
-  remains preferred when readable, while CLI/Web fallback stays available when OAuth credentials are not usable.
+  remains preferred when readable, while Web/CLI fallback stays available when OAuth credentials are not usable.
+- If extra-usage spend reaches or exceeds its cap, the spend-limit window becomes the primary blocking window instead
+  of leaving a lower-usage session window in the primary position.
 - Plan inference: `subscriptionType` is preferred when present; `rate_limit_tier` falls back to
   Max/Pro/Team/Enterprise. When a Max `rate_limit_tier` carries a usage multiplier
   (`default_claude_max_5x` / `default_claude_max_20x`), it is surfaced in the label as "Max 5x" / "Max 20x".
@@ -89,7 +94,7 @@ Admin API key setup:
 ## Web API (cookies)
 - Preferences → Providers → Claude → Cookie source (Automatic or Manual).
 - Manual mode accepts a `Cookie:` header from a claude.ai request.
-- Multi-account manual tokens: add entries to `~/.codexbar/config.json` (`tokenAccounts`) and set Claude cookies to
+- Multi-account manual tokens: add entries to the resolved config file (`tokenAccounts`) and set Claude cookies to
   Manual. The menu can show all accounts stacked or a switcher bar (Preferences → Advanced → Display).
 - Claude token accounts accept either `sessionKey` cookies or OAuth access tokens (`sk-ant-oat...`). OAuth-token
   accounts route to the OAuth path and disable cookie mode; session-key or cookie-header accounts stay in manual
@@ -111,9 +116,11 @@ Admin API key setup:
   - `GET https://claude.ai/api/account` → email + plan hints.
 - Outputs:
   - Session + weekly + model-specific percent used.
-  - Daily Routines extra window when returned by the usage API.
+  - Daily Routines extra window in the snapshot when returned by the usage API; this fork omits that row from the
+    menu card.
   - Extra usage spend/limit (if enabled).
   - Account email + inferred plan.
+  - An exhausted extra-usage cap as the primary blocking window.
 
 ## claude-swap accounts (opt-in)
 
@@ -172,6 +179,9 @@ Packaged synthetic proof (fake `cswap` executable, no real accounts or credentia
   - Some Education and organization-managed subscriptions return only a subscription notice, with no numeric
     session or weekly quota fields. CodexBar reports those limits as unavailable, keeps local cost/token history
     visible, and never derives quota percentages from spend or token totals.
+- In App Auto mode, CLI is the final fallback after OAuth and a plausible web session. If a manual web session was
+  already configured, the CLI result can reuse it for model-specific extras; Auto does not launch browser discovery
+  for that enrichment.
 
 ## Cost usage (local log scan)
 - Source roots:

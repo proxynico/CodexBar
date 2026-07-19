@@ -1,232 +1,66 @@
 ---
-summary: "Fork roadmap: phases, milestones, and planned improvements."
+summary: "Nico fork roadmap: completed 0.45 integration and current maintenance priorities."
 read_when:
-  - Planning fork work
-  - Reviewing fork milestones
+  - Reviewing fork status
+  - Planning the next upstream refresh
+  - Deciding whether work belongs in the fork
 ---
 
-# CodexBar Fork Roadmap
+# Fork roadmap
 
-This document outlines the development roadmap for the CodexBar fork maintained by Brandon Charleson.
+This roadmap tracks the current `proxynico/CodexBar` fork. It replaces the former topoffunnel/Augment roadmap.
 
-## ✅ Phase 1: Fork Identity (COMPLETE)
+## Completed: upstream 0.45 integration
 
-**Status:** Completed Jan 4, 2026
+The fork moved from 0.41.0/build 100 to upstream 0.45.0/build 107 using a clean upstream base. The integration kept
+the complete upstream feature set and ported only the fork behavior still needed.
 
-**Achievements:**
-- Established dual attribution in About section
-- Updated README with fork notice and enhancements
-- Created comprehensive Augment provider documentation
-- App builds and runs successfully
+Completed proof:
 
-**Commit:** `da3d13e` - "feat: establish fork identity with dual attribution"
+- Upstream base pinned at `2ccb4525687c92ff1cd50c8c57f24420c1fcb71f`.
+- Validated fork head `bfaaa1bbc85e47da020f435b9b5f9e319d529f2d` pushed to `fork/main`.
+- Pre-integration state preserved on `codex/pre-upstream-0.45-safety-20260718`.
+- Full sharded suite passed 718 selections across 60 groups.
+- SwiftFormat and SwiftLint passed with no issues.
+- Independent review reported no findings.
+- `/Applications/CodexBar.app` 0.45.0/build 107 passed code-sign, launch-at-login, widget refresh, and one quiet refresh
+  interval.
 
----
+See the [integration completion record](superpowers/specs/2026-07-18-upstream-0.45-fork-integration-design.md#completion-record).
 
-## 🔧 Phase 2: Enhanced Augment Diagnostics
+## Current maintenance priorities
 
-**Goal:** Fix persistent cookie disconnection issues with better logging and diagnostics
+1. Keep the fork delta small and explicit.
+2. Preserve passive, non-interactive Keychain behavior and no-rewrite cookie caching.
+3. Preserve the compact Codex/Claude presentation and Claude fallback order with focused tests.
+4. Review upstream releases from an exact pinned commit; do not merge a large update into `main` first.
+5. Keep fork-only GitHub automation absent unless Nico explicitly approves restoring it.
+6. Update active docs and the fork integration record whenever behavior or remote policy changes.
 
-**Tasks:**
-1. **Replace print() with proper logging**
-   - Use `CodexBarLog.logger("augment")` throughout
-   - Add structured metadata for debugging
-   - Follow patterns from Claude/Cursor providers
+## Decision rule for new work
 
-2. **Enhanced Cookie Diagnostics**
-   - Log cookie expiration times
-   - Track cookie refresh attempts
-   - Add cookie domain filtering diagnostics
-   - Log browser source priority
+Keep a change in the fork when it is a personal presentation choice, local operational policy, or behavior upstream
+has intentionally chosen differently. Prefer an upstream contribution when the fix is general, small, tested, and
+does not depend on fork policy.
 
-3. **Session Keepalive Monitoring**
-   - Add keepalive status to debug pane
-   - Log refresh attempts and success/failure
-   - Track time until next refresh
-   - Add manual "Force Refresh" button
+Do not restore removed Kimi K2 or CrossModel relay code without a new, evidence-backed decision. Do not add providers,
+dependencies, account systems, or automation merely because an old roadmap listed them.
 
-4. **Debug Pane Improvements**
-   - Add "Cookie Status" section showing:
-     - Current cookies and expiration
-     - Last successful import
-     - Browser source used
-     - Keepalive status
-   - Add "Test Connection" button
-   - Show detailed error messages
+## Next upstream refresh definition of done
 
-**Files to Modify:**
-- `Sources/CodexBarCore/Providers/Augment/AugmentStatusProbe.swift`
-- `Sources/CodexBarCore/Providers/Augment/AugmentSessionKeepalive.swift`
-- `Sources/CodexBar/UsageStore.swift` (debug pane)
+- A dated safety branch exists remotely before integration starts.
+- The exact upstream commit and release/build are written down.
+- Every retained fork behavior has a focused regression test.
+- `make test`, `make check`, and `git diff --check` pass.
+- A reviewer checks the full fork-only production diff.
+- Bundle/runtime checks are run only when the changed behavior needs them.
+- The integration branch is pushed before `fork/main` moves.
+- Installation, login-item proof, and quiet runtime observation are completed only when installation is in scope.
 
----
+## Related docs
 
-## 🎯 Phase 3: Quotio Feature Analysis
-
-**Goal:** Identify and cherry-pick valuable features from Quotio without copying code
-
-**Analysis Areas:**
-1. **Multi-Account Management**
-   - How Quotio handles multiple accounts per provider
-   - Account switching UI patterns
-   - Account status indicators
-
-2. **OAuth Flow Improvements**
-   - Quotio's OAuth implementation patterns
-   - Token refresh mechanisms
-   - Error handling strategies
-
-3. **UI/UX Patterns**
-   - Menu bar organization
-   - Settings layout
-   - Status indicators
-   - Notification patterns
-
-4. **Session Management**
-   - How Quotio handles session persistence
-   - Cookie refresh strategies
-   - Automatic reconnection logic
-
-**Deliverable:** `docs/QUOTIO_ANALYSIS.md` with:
-- Feature comparison matrix
-- Implementation recommendations
-- Priority ranking
-- Effort estimates
-
----
-
-## 🔄 Phase 4: Upstream Sync Workflow
-
-**Goal:** Set up automated workflow to sync with upstream while maintaining fork changes
-
-**Tasks:**
-1. **Create Sync Script**
-   - `Scripts/sync_upstream.sh`
-   - Fetch upstream changes
-   - Show diff summary
-   - Interactive merge/rebase
-
-2. **Conflict Resolution Guide**
-   - Document common conflict areas
-   - Resolution strategies
-   - Testing checklist
-
-3. **Automated Checks**
-   - CI workflow to detect upstream changes
-   - Weekly sync reminders
-   - Compatibility testing
-
-**Files to Create:**
-- `Scripts/sync_upstream.sh`
-- `docs/UPSTREAM_STRATEGY.md`
-- `.github/workflows/upstream-sync-check.yml`
-
----
-
-## 🚀 Phase 5: Multi-Account Management Foundation
-
-**Goal:** Implement multi-account support for providers (starting with Augment)
-
-**Features:**
-1. **Account Management UI**
-   - Add/remove accounts per provider
-   - Account nicknames/labels
-   - Active account indicator
-   - Quick account switching
-
-2. **Account Storage**
-   - Keychain-based account storage
-   - Account metadata (email, plan, last used)
-   - Secure credential isolation
-
-3. **Account Switching**
-   - Switch active account from menu
-   - Preserve per-account usage history
-   - Automatic account selection based on quota
-
-4. **UI Enhancements**
-   - Account dropdown in menu bar
-   - Per-account usage display
-   - Account health indicators
-
-**Implementation Plan:**
-1. Start with Augment provider (already has cookie infrastructure)
-2. Create `AccountManager` service
-3. Update `UsageStore` to handle multiple accounts
-4. Add account switcher to menu bar
-5. Extend to other providers (Claude, Cursor, etc.)
-
-**Files to Create:**
-- `Sources/CodexBarCore/AccountManager.swift`
-- `Sources/CodexBarCore/Providers/Augment/AugmentAccountManager.swift`
-- `Sources/CodexBar/AccountSwitcherView.swift`
-
----
-
-## 📋 Future Enhancements
-
-### Short Term (1-2 weeks)
-- [ ] Augment cookie issue resolution (Phase 2)
-- [ ] Quotio feature analysis (Phase 3)
-- [ ] Upstream sync workflow (Phase 4)
-
-### Medium Term (1-2 months)
-- [ ] Multi-account management (Phase 5)
-- [ ] Enhanced notification system
-- [ ] Usage history tracking
-- [ ] Export usage data
-
-### Long Term (3+ months)
-- [ ] Custom provider API
-- [ ] Usage predictions/alerts
-- [ ] Cost optimization suggestions
-- [ ] Team usage aggregation
-
----
-
-## 🤝 Upstream Contribution Strategy
-
-**When to Contribute Upstream:**
-- Bug fixes that benefit all users
-- Provider improvements (non-fork-specific)
-- Documentation improvements
-- Performance optimizations
-
-**When to Keep in Fork:**
-- Multi-account management (major architectural change)
-- Fork-specific branding/attribution
-- Experimental features
-- Features specific to topoffunnel.com users
-
-**PR Guidelines:**
-- Keep PRs focused and small
-- Include comprehensive tests
-- Follow upstream coding style
-- Document breaking changes
-- Be patient with review process
-
----
-
-## 📊 Success Metrics
-
-**Technical:**
-- Zero cookie disconnection issues
-- < 1 second menu bar response time
-- 100% test coverage for new features
-- Zero regressions from upstream syncs
-
-**User:**
-- Positive feedback from topoffunnel.com users
-- Active usage metrics
-- Feature requests and engagement
-- Community contributions
-
----
-
-## 🔗 Related Documentation
-
-- [Augment Provider](augment.md) - Augment-specific documentation
-- [Development Guide](DEVELOPMENT.md) - Build and test instructions
-- [Provider Authoring](provider.md) - How to create new providers
-- [Upstream Strategy](UPSTREAM_STRATEGY.md) - Syncing with original repository
-- [Quotio Analysis](QUOTIO_ANALYSIS.md) - Feature comparison (TBD)
+- [Fork Quick Start](FORK_QUICK_START.md)
+- [Fork Setup](FORK_SETUP.md)
+- [Upstream Strategy](UPSTREAM_STRATEGY.md)
+- [Development](DEVELOPMENT.md)
+- [Keychain Current State](KEYCHAIN_FIX.md)

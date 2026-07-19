@@ -28,7 +28,7 @@ Store a key in the shared app/CLI config:
 printf '%s' "$OPENAI_ADMIN_KEY" | codexbar config set-api-key --provider openai --stdin
 ```
 
-Settings → Providers → OpenAI writes the same `~/.codexbar/config.json` field. `OPENAI_ADMIN_KEY` is preferred over
+Settings → Providers → OpenAI writes the same field in the [resolved config file](configuration.md). `OPENAI_ADMIN_KEY` is preferred over
 `OPENAI_API_KEY` because it unlocks organization costs and usage; a normal API key only supports the legacy balance
 fallback.
 

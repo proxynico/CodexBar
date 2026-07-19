@@ -13,42 +13,46 @@ read_when:
 ### Building and Running
 
 ```bash
-# Full build, package, and launch (recommended)
+# Focused test while editing
+swift test --filter ClaudeSourcePlannerTests
+
+# Required full handoff gates
+make test
+make check
+
+# Build, package, and launch only for UI/runtime validation
 ./Scripts/compile_and_run.sh
 
-# Also run the sharded test suite before packaging/relaunching
-./Scripts/compile_and_run.sh --test
-
-# Just build and package (no tests)
+# Package or launch without running tests
 ./Scripts/package_app.sh
-
-# Launch existing app (no rebuild)
 ./Scripts/launch.sh
 ```
 
 ### Development Workflow
 
-1. **Make code changes** in `Sources/CodexBar/`
-2. **Run** `./Scripts/compile_and_run.sh --test` to test, rebuild, and launch
-3. **Check logs** in Console.app (filter by "codexbar")
-4. **Optional file log**: enable Debug → Logging → "Enable file logging" to write
+1. **Make code changes** in `Sources/` and focused tests in `Tests/`.
+2. **Run a focused test**, then `make test` and `make check` before handoff.
+3. **Run** `./Scripts/compile_and_run.sh` only when UI/runtime behavior needs a fresh bundle.
+4. **Check logs** in Console.app (filter by "codexbar") when runtime proof is in scope.
+5. **Optional file log**: enable Debug → Logging → "Enable file logging" to write
    `~/Library/Logs/CodexBar/CodexBar.log` (verbosity defaults to "Verbose")
 
 ## Keychain Prompts (Development)
 
-### First Launch After Fresh Clone
-You'll see **one keychain prompt per stored credential** on the first launch. This is a **one-time migration** that converts existing keychain items to use `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`.
+### Passive reads
 
-### Subsequent Rebuilds
-The migration flag is stored in UserDefaults, so migrated CodexBar-owned items should not prompt again. Ad-hoc
-signing can still prompt for other keychain surfaces; use `./Scripts/compile_and_run.sh --clear-adhoc-keychain`
-when you intentionally want to reset ad-hoc keychain state.
+Routine background and migration probes apply the no-UI Security.framework policy. If macOS requires interaction,
+the read returns unavailable data instead of presenting a prompt. User-initiated provider actions may still request
+access under the configured provider and global Keychain policies.
 
-### Why This Happens
-- Ad-hoc signed development builds change code signature on every rebuild
-- macOS keychain normally prompts when signature changes
-- We use `ThisDeviceOnly` accessibility to prevent prompts
-- Migration runs once to convert any existing items
+### Rebuilds
+
+Use a valid installed signing identity when bundle validation needs Keychain-backed behavior. Do not configure the
+legacy self-signed `CodexBar Development` identity; the script ignores it because it is incompatible with the bundled
+framework validation path. Ad hoc signing can still prompt on third-party Keychain surfaces.
+
+Do not use `--clear-adhoc-keychain` during routine checks. It intentionally deletes CodexBar-owned cache state and is
+only for targeted clean-state testing.
 
 ### Reset Migration (Testing)
 ```bash
@@ -134,8 +138,7 @@ make test
 
 ### Format Code
 ```bash
-swiftformat Sources Tests
-swiftlint --strict
+make check
 ```
 
 ## Distribution
@@ -146,13 +149,11 @@ swiftlint --strict
 # Creates: CodexBar.app with ad-hoc signing by default
 ```
 
-### Release Build (Notarized)
-```bash
-./Scripts/sign-and-notarize.sh
-# Creates: CodexBar-<version>.zip and CodexBar-<version>.dSYM.zip
-```
+### Official release build
 
-See `docs/RELEASING.md` for full release process.
+`Scripts/sign-and-notarize.sh` and `Scripts/release.sh` are inherited official-upstream tools. This fork's release
+environment still targets `steipete/CodexBar`. Do not run them for normal fork work. Use the local package command
+above and read [RELEASING.md](RELEASING.md) before any authorized publication action.
 
 ## Troubleshooting
 
@@ -172,7 +173,7 @@ defaults read com.steipete.codexbar KeychainMigrationV1Completed
 # Should output: 1
 
 # Check migration logs
-log show --predicate 'category == "keychain-migration"' --last 5m
+/usr/bin/log show --predicate 'category == "keychain-migration"' --last 5m
 ```
 
 ### Cookies Not Refreshing
@@ -208,7 +209,8 @@ defaults delete com.steipete.codexbar debugMainThreadHangWatchdog
 ### Cookie Management
 - Automatic browser import via SweetCookieKit
 - Keychain cache for some imported browser cookies and OAuth/device-flow credentials
-- `~/.codexbar/config.json` for provider settings, manual cookies, and stored API keys
+- The resolved config file for provider settings, manual cookies, and stored API keys; see
+  [Configuration](configuration.md)
 - Manual override for debugging
 - Browser-cookie import when cached sessions need refresh
 

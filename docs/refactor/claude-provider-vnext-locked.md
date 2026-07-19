@@ -2,10 +2,15 @@
 summary: "Locked implementation plan for Claude provider vNext: resolved source-selection contracts, typed credential rules, siloing guarantees, and phase gates."
 supersedes: "Initial vNext draft (removed)"
 created: "2026-02-18"
-status: "Locked for implementation"
+status: "Historical plan; source-planner integration implemented"
 ---
 
 # Claude provider vNext (locked plan)
+
+> [!NOTE]
+> Historical implementation plan. The source planner is now active in both the descriptor pipeline and direct usage
+> fetcher. The current behavior contract is
+> [claude-current-baseline.md](claude-current-baseline.md); where this plan differs, the baseline and tests win.
 
 This is the implementation-locked vNext plan.
 
@@ -36,7 +41,7 @@ These behaviors are **non-negotiable** during refactor unless this doc is explic
 
 | Runtime | Selected mode | Ordered attempts | Fallback rules |
 | --- | --- | --- | --- |
-| app | auto | oauth -> cli -> web | oauth fallback allowed; cli fallback to web only when web available; web terminal |
+| app | auto | oauth -> web -> cli | oauth and ordinary web errors may fall through; cancellation is terminal; cli terminal |
 | app | oauth | oauth | no fallback |
 | app | cli | cli | no fallback |
 | app | web | web | no fallback |
@@ -51,17 +56,10 @@ Notes:
 - Planner output must feed the existing generic provider fetch pipeline; do not introduce a second Claude-only
   execution stack alongside `ProviderFetchPlan` / `ProviderFetchPipeline`.
 
-### 1a) `.auto` inconsistency characterization contract (must-do before reconciliation)
+### 1a) `.auto` reconciliation outcome
 
-Current code has three `.auto` decision sites with inconsistent app ordering:
-
-- Strategy pipeline resolve order (app): `oauth -> cli -> web`.
-- `resolveUsageStrategy` helper order: `oauth -> cli -> web -> cli fallback`.
-- `ClaudeUsageFetcher.loadLatestUsage(.auto)` order: `oauth -> web -> cli -> oauth fallback`.
-
-Phase 0 must characterize these paths with tests where they are reachable through stable seams, and otherwise defer to
-the baseline doc before deleting any path.
-Phase 2 must reconcile this into planner-only source selection.
+The former inconsistent decision sites now resolve through `ClaudeSourcePlanner`. App Auto is
+`oauth -> web -> cli`; CLI Auto remains `web -> cli`. The baseline documents current fallback and enrichment rules.
 
 ### 2) Prompt/cooldown contract
 
@@ -157,11 +155,10 @@ compatibility must be preserved:
 - **Decision:** keep support exactly under the startup bootstrap constraints listed above.
 - Any expansion/restriction requires explicit doc update and tests.
 
-### Runtime policy unification timing
+### Runtime policy unification outcome
 
-- **Decision:** do not unify app and CLI `auto` ordering before this refactor.
-- First consolidate to one planner implementation with current runtime-specific behavior preserved.
-- Any runtime-policy unification is a separate, explicit behavior-change follow-up.
+- Source selection is consolidated in one planner.
+- Runtime order intentionally remains different: app Auto is `oauth -> web -> cli`; CLI Auto is `web -> cli`.
 
 ### Planner integration timing
 

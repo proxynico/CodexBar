@@ -12,7 +12,8 @@ read_when:
 The original fix (migrating legacy CodexBar keychain items to `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`) is
 still in place, but the architecture has changed:
 
-- Provider settings and manual secrets are now persisted in `~/.codexbar/config.json`.
+- New installs persist provider settings and manual secrets in `~/.config/codexbar/config.json`; existing installs can
+  continue using the legacy `~/.codexbar/config.json` path.
 - Legacy keychain stores are still present mainly to migrate old installs, then clear old items.
 - Keychain is still used for runtime cache entries (for example `com.steipete.codexbar.cache`) and Claude OAuth
   bootstrap reads from Claude CLI keychain (`Claude Code-credentials`).
@@ -21,11 +22,26 @@ still in place, but the architecture has changed:
 
 | Previous statement in this doc | Current behavior |
 | --- | --- |
-| CodexBar stores provider credentials only in keychain | Manual/provider settings are config-file backed (`~/.codexbar/config.json`), while keychain is still used for runtime caches and Claude OAuth bootstrap fallback. |
+| CodexBar stores provider credentials only in keychain | Manual/provider settings use the resolved config file; Keychain remains for runtime caches and Claude OAuth bootstrap fallback. |
 | `ClaudeOAuthCredentials.swift` migrated CodexBar-owned Claude OAuth keychain items | Claude OAuth primary source is Claude CLI keychain service (`Claude Code-credentials`), with CodexBar cache in `com.steipete.codexbar.cache` (`oauth.claude`). |
 | Migration runs in `CodexBarApp.init()` | Migration runs in `HiddenWindowView` `.task` via detached task (`KeychainMigration.migrateIfNeeded()`). |
 | Post-migration prompts should be zero in all Claude paths | Legacy-store prompts are reduced; Claude OAuth bootstrap can still prompt when reading Claude CLI keychain, with cooldown + no-UI probes to prevent storms. |
 | Log category is `KeychainMigration` | Category is `keychain-migration` (kebab-case). |
+
+## Fork hardening in 0.45
+
+The Nico fork adds these rules on top of upstream 0.45:
+
+- Passive reads in legacy cookie/token stores and migration code apply `KeychainNoUIQuery`.
+- `errSecInteractionNotAllowed` is treated as unavailable data. The shared cache preserves the existing entry and
+  retries later instead of treating a locked Keychain as missing or corrupt.
+- Alibaba Chromium Safe Storage distinguishes an interaction-denied read from a missing item, so browser fallback
+  does not turn a denied read into a false "no credentials" result.
+- `KeychainCacheStore` no longer attaches deprecated trusted-application ACLs with `SecAccessCreate` or
+  `SecTrustedApplicationCreateFromPath`.
+- A cookie refresh whose header, source label, and authentication-failure policy are unchanged retains the existing
+  entry and `storedAt` value without another Keychain write. The same retain operation participates in the staged
+  refresh transaction, so validation semantics remain intact.
 
 ## Current keychain surfaces for Claude
 
@@ -80,6 +96,8 @@ This is OS/keychain ACL behavior, not a `ThisDeviceOnly` migration issue.
 - Browser-imported Claude session cookies are cached in keychain service `com.steipete.codexbar.cache`.
 - Account key is `cookie.claude`.
 - Cache writes use `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`.
+- Unchanged validated entries are retained without a write; a temporarily unavailable Keychain entry is not cleared
+  or replaced.
 - Users can clear browser-cookie cache entries from **Preferences → Debug → Caches** or with
   `codexbar cache clear --cookies`. `--provider <id>` scopes cookie clearing to one provider and includes scoped
   Codex managed-account cookie keys.
@@ -113,10 +131,13 @@ defaults read com.steipete.codexbar claudeOAuthKeychainDeniedUntil
 
 ### Inspect keychain-related logs
 ```bash
-log show --predicate 'subsystem == "com.steipete.codexbar" && (category == "keychain-migration" || category == "keychain-preflight" || category == "keychain-prompt" || category == "keychain-cache" || category == "claude-usage" || category == "cookie-cache")' --last 10m
+/usr/bin/log show --predicate 'subsystem == "com.steipete.codexbar" && (category == "keychain-migration" || category == "keychain-preflight" || category == "keychain-prompt" || category == "keychain-cache" || category == "claude-usage" || category == "cookie-cache")' --last 10m
 ```
 
 ### Reset migration for local testing
+
+This changes live app state and may cause new migration reads. Do not use it as routine validation.
+
 ```bash
 defaults delete com.steipete.codexbar KeychainMigrationV1Completed
 ./Scripts/compile_and_run.sh

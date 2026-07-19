@@ -39,14 +39,16 @@ Usage source picker:
 - `rate_limit.primary_window` / `secondary_window` map to the session/weekly lanes.
 - `additional_rate_limits[]` (model-specific limits such as GPT-5.3-Codex-Spark) map to named
   `UsageSnapshot.extraRateWindows` entries. Spark uses stable `codex-spark` / `codex-spark-weekly` ids and
-  `Codex Spark 5-hour` / `Codex Spark Weekly` titles. When the field is absent, the snapshot is unchanged.
-- Preferences → Providers → Codex → Show Codex Spark usage hides only the Spark rows in menus and the provider
-  preview. It does not change fetching, history, notifications, widgets, credits, or other extra limits.
+  `Codex Spark 5-hour` / `Codex Spark Weekly` titles. When the field is absent, the snapshot is unchanged. This fork
+  keeps these values available to non-card consumers but hides every additional Codex limit from the main menu card.
+- The upstream **Show Codex Spark usage** preference does not make extra Codex rows visible in this fork. Fetching,
+  history, notifications, widgets, and snapshot contents remain unchanged.
 
 ### Advanced profile-home accounts
 - Managed Codex accounts remain the default multi-account path.
-- Advanced users can add existing Codex homes to `~/.codexbar/config.json` with
-  `providers[].codexProfileHomePaths`.
+- Advanced users can add existing Codex homes to the resolved config file with `providers[].codexProfileHomePaths`.
+  New installs use `~/.config/codexbar/config.json`; legacy installs can continue using
+  `~/.codexbar/config.json`.
 - Each configured path must be absolute or start with `~/`, and point at a Codex home that contains `auth.json`.
 - CodexBar reads identity from the configured home, exposes it in the Codex account switcher, and scopes
   remote Codex fetches with `CODEX_HOME`.
@@ -141,6 +143,8 @@ Example:
 - Web dashboard fills credits only when OAuth/CLI do not provide them.
 - CLI RPC: `account/rateLimits/read` → credits balance.
 - CLI PTY diagnostics can still parse `Credits:` from saved/manual `/status` output.
+- This fork hides the Codex credit-balance row and buy-credit action from the menu card. It does not remove the
+  underlying credit snapshot, history, expiry logic, or non-card consumers.
 
 ## Cost usage (local log scan)
 - Menu source selection:

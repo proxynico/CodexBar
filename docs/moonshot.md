@@ -23,7 +23,7 @@ third-party Kimi relays.
 
 ## Data sources
 
-1. **API key** stored in `~/.codexbar/config.json` or supplied via `MOONSHOT_API_KEY` / `MOONSHOT_KEY`.
+1. **API key** stored in the [resolved config file](configuration.md) or supplied via `MOONSHOT_API_KEY` / `MOONSHOT_KEY`.
    CodexBar stores the key in config after you paste it in Settings → Providers → Moonshot / Kimi API.
 2. **Region**
    - International: `https://api.moonshot.ai/v1/users/me/balance`

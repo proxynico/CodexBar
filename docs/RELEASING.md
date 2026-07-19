@@ -1,119 +1,120 @@
 ---
-summary: "CodexBar release checklist: package, sign, notarize, appcast, and asset validation."
+summary: "Release policy for Nico's fork, local packaging, and the guarded official release path."
 read_when:
-  - Starting a CodexBar release
-  - Updating signing/notarization or appcast steps
-  - Validating release assets or Sparkle feed
+  - Packaging or installing a local CodexBar build
+  - Considering a fork release
+  - Reviewing the inherited official release scripts
 ---
 
-# Release process (CodexBar)
+# Release and installation policy
 
-SwiftPM-only; package/sign/notarize manually (no Xcode project). Sparkle feed is served from GitHub Releases. Checklist below merges Trimmy’s release flow with CodexBar specifics.
+## Current fork policy
 
-**Must read first:** open the master macOS release guide at `~/Projects/agent-scripts/docs/RELEASING-MAC.md` alongside this file and reconcile any differences in favor of CodexBar specifics before starting a release.
+This checkout is not configured to publish a `proxynico/CodexBar` release.
 
-## Expectations
-- When someone says “release CodexBar”, do the entire end-to-end flow: bump versions/CHANGELOG, build, sign and notarize, upload the zip to the GitHub release, generate/update the appcast with the new signature, publish the tag/release, and verify the enclosure URL responds with 200/OK and installs via Sparkle (no 404s or stale feeds).
+The inherited `.mac-release.env` still targets:
 
-### Release automation notes (Scripts/release.sh)
-- Always forces a fresh build/notarization (no cached artifacts) before publishing.
-- Fails fast if: git tree is dirty, the top changelog section is still “Unreleased” or mismatched, the target version already exists in the appcast, or the build number is not greater than the latest appcast entry.
-- Sparkle key probe runs up front; appcast entry + signature verified automatically after generation.
-- Release notes are extracted directly from the current changelog section and passed to the GitHub release (no manual notes flag needed).
-- Sparkle appcast notes are generated as HTML from the same changelog section and embedded into the appcast entry.
-- Requires tools/env on PATH: `swiftformat`, `swiftlint`, `swift`, `sign_update`, `generate_keys`, `generate_appcast`, `gh`, `python3`, `zip`, `curl`, plus `APP_STORE_CONNECT_*`. `SPARKLE_PRIVATE_KEY_FILE` is only needed when overriding the default Keychain Sparkle key.
+- Repository: `steipete/CodexBar`.
+- Sparkle feed: `https://raw.githubusercontent.com/steipete/CodexBar/main/appcast.xml`.
+- Download prefix: official `steipete/CodexBar` GitHub releases.
+- Bundle identifier: `com.steipete.codexbar`.
+- Official Developer ID identity and App Store Connect credentials.
 
-## Prereqs
-- Xcode 26+ installed at `/Applications/Xcode.app` (for ictool/iconutil and SDKs).
-- Developer ID Application cert installed: `Developer ID Application: Peter Steinberger (Y5PE65HELJ)`.
-- ASC API creds in env: `APP_STORE_CONNECT_API_KEY_P8`, `APP_STORE_CONNECT_KEY_ID`, `APP_STORE_CONNECT_ISSUER_ID`.
-- Sparkle keys: public key expectation is in `.mac-release.env`; CodexBar still uses the older shared AGCY key, so the manifest includes the local Dropbox fallback path. `SPARKLE_PRIVATE_KEY_FILE` overrides it.
-- Ensure shell has release env vars loaded (usually `source ~/.profile`) before running `Scripts/release.sh`.
-- Shared release helper: `Scripts/mac-release` resolves `MAC_RELEASE_TOOL`, sibling `../agent-scripts`, or `~/Projects/agent-scripts`.
+The fork also intentionally removes the upstream GitHub CI and release workflows. Therefore:
 
-## Icon (glass .icon → .icns)
-```
-./Scripts/build_icon.sh Icon.icon CodexBar
-```
-Uses Xcode’s `ictool` + transparent padding + iconset → Icon.icns.
+> Do not run `./Scripts/release.sh` from this fork. It is an external publication command configured for the official
+> upstream repository, not a local packaging helper.
 
-## Build, sign, notarize (universal: arm64 + x86_64)
-```
-./Scripts/sign-and-notarize.sh
-```
-What it does:
-- `swift build -c release --arch arm64` and `swift build -c release --arch x86_64`
-- Packages `CodexBar.app` with Info.plist and Icon.icns
-- Embeds Sparkle.framework, Updater, Autoupdate, XPCs
-- Codesigns **everything** with runtime + timestamp (deep) and adds rpath
-- Zips to `CodexBar-macos-universal-<version>.zip`
-- Submits to notarytool, waits, staples, validates
+Publishing a fork release requires a separate, explicit decision and configuration pass. Local packaging or
+installation does not authorize tags, GitHub releases, appcast changes, Homebrew updates, or upstream writes.
 
-Gotchas fixed:
-- Sparkle needs signing for framework, Autoupdate, Updater, XPCs (Downloader/Installer) or notarization fails.
-- Use `--timestamp` and `--deep` when signing the app to avoid invalid signature errors.
-- Avoid `unzip` — it can add AppleDouble `._*` files that break the sealed signature and trigger “app is damaged”. Use Finder or `ditto -x -k CodexBar-<ver>.zip /Applications`. If Gatekeeper complains, delete the app bundle, re-extract with `ditto`, then `spctl -a -t exec` to verify.
-- Manual sanity check before uploading: `find CodexBar.app -name '._*'` should return nothing; then `spctl --assess --type execute --verbose CodexBar.app` and `codesign --verify --deep --strict --verbose CodexBar.app` should both pass on the packaged bundle.
+## Required local gates
 
-## Appcast (Sparkle)
-After notarization, or let `Scripts/release.sh` do this:
-```
-./Scripts/make_appcast.sh CodexBar-macos-universal-0.1.0.zip \
-  https://raw.githubusercontent.com/steipete/CodexBar/main/appcast.xml
-```
-Generates HTML release notes from `CHANGELOG.md` (via `Scripts/changelog-to-html.sh`) and embeds them into the appcast entry.
-Uploads not handled automatically—commit/publish appcast + zip to the feed location (GitHub Releases/raw URL).
+Before handing off code or packaging an in-scope runtime build:
 
-## Tag & release
-```
-./Scripts/release.sh
+```bash
+make test
+make check
+git diff --check
 ```
 
-## Homebrew (Cask)
-CodexBar ships a Homebrew **Cask** in `../homebrew-tap`. When installed via Homebrew, CodexBar disables Sparkle and the app
-must be updated via `brew`.
+Use fixtures, stubs, and test stores. Do not add live provider or Keychain probes to release validation unless Nico
+explicitly requests that live check.
 
-After publishing the GitHub release, `.github/workflows/release-cli.yml` builds the macOS, glibc Linux, and static musl Linux CLI tarballs for arm64 and x86_64, uploads them plus checksums, then dispatches the Homebrew tap update for both the CLI formula and app cask. Homebrew continues to use the glibc Linux assets. If the final dispatch is rate-limited, the tarballs and app zip may still be present; rerun or manually update the tap formula/cask from the published assets.
+## Package a local bundle
 
-## Checklist (quick)
-- [ ] Read both this file and `~/Projects/agent-scripts/docs/RELEASING-MAC.md`; resolve any conflicts toward CodexBar’s specifics.
-- [ ] Update versions (scripts/Info.plist, CHANGELOG, About text) — changelog top section must be finalized; release script pulls notes from it automatically.
-- [ ] `swiftformat`, `swiftlint`, `make test` (zero warnings/errors)
-- [ ] `./Scripts/build_icon.sh` if icon changed
-- [ ] `./Scripts/sign-and-notarize.sh`
-- [ ] Generate Sparkle appcast via `Scripts/release.sh` or `Scripts/make_appcast.sh`; use `SPARKLE_PRIVATE_KEY_FILE` only if overriding Keychain signing.
-  - Upload the dSYM archive alongside the app zip on the GitHub release; the release script now automates this and will fail if it’s missing.
-  - After publishing the release and the Release CLI workflow finishes, run `Scripts/check-release-assets.sh <tag>` to confirm the app zip, dSYM zip, CLI tarballs, and CLI checksums are present on GitHub.
-  - Generate the appcast + HTML release notes: `./Scripts/make_appcast.sh CodexBar-macos-universal-<ver>.zip https://raw.githubusercontent.com/steipete/CodexBar/main/appcast.xml`
-  - Beta channel: prefix the command with `SPARKLE_CHANNEL=beta` to tag the entry.
-  - Verify the enclosure signature + size: `./Scripts/verify_appcast.sh <ver>`
-- [ ] Upload zip + appcast to feed; publish tag + GitHub release so Sparkle URL is live (avoid 404)
-- [ ] Homebrew tap: wait for the Release CLI workflow to update `../homebrew-tap/Casks/codexbar.rb` (app zip url + sha256) and `../homebrew-tap/Formula/codexbar.rb` (CLI tarball urls + sha256), then verify:
-  - `gh run watch <release-cli-run-id> --exit-status`
-  - `Scripts/check-release-assets.sh v<version>`
-  - `brew uninstall --cask codexbar || true`
-  - `brew untap steipete/tap || true; brew tap steipete/tap`
-  - `brew install --cask steipete/tap/codexbar && open -a CodexBar`
-- [ ] Version continuity: confirm the new version is the immediate next patch/minor (no gaps) and CHANGELOG has no skipped numbers (e.g., after 0.2.0 use 0.2.1, not 0.2.2)
-- [ ] Changelog sanity: single top-level title, no duplicate version sections, versions strictly descending with no repeats
-- [ ] Release pages: title format `CodexBar <version>`, notes as Markdown list (no stray blank lines)
-- [ ] Changelog/release notes are user-facing: avoid internal-only bullets (build numbers, script bumps) and keep entries concise
-- [ ] Download uploaded `CodexBar-macos-universal-<ver>.zip`, unzip via `ditto`, run, and verify signature (`spctl -a -t exec -vv CodexBar.app` + `stapler validate`)
-- [ ] Confirm `appcast.xml` points to the new zip/version and renders the HTML release notes (not escaped tags)
-- [ ] Verify on GitHub Releases: assets present (zip, appcast), release notes match changelog, version/tag correct
-- [ ] Open the appcast URL in browser to confirm the new entry is visible and enclosure URL is reachable
-- [ ] Manually visit the enclosure URL (curl -I) to ensure 200/OK (no 404) after publishing assets/release
-- [ ] Ensure `sparkle:edSignature` is present for the enclosure in appcast (generated by `generate_appcast` with the ed25519 key)
-- [ ] When creating the GitHub release, paste the CHANGELOG entry as Markdown list (one `-` per line, blank line between sections); visually confirm bullets render correctly after publishing
-- [ ] Keep a previous signed build in `/Applications/CodexBar.app` to test Sparkle delta/full update to the new release
-- [ ] Manual Gatekeeper sanity: after packaging, `find CodexBar.app -name '._*'` is empty, `spctl --assess --type execute --verbose CodexBar.app` and `codesign --verify --deep --strict --verbose CodexBar.app` succeed
-- [ ] For Sparkle verification: if replacing `/Applications/CodexBar.app`, quit first, replace, relaunch, and test update
-- **Definition of “done” for a release:** all of the above are complete, the appcast/enclosure link resolves, Homebrew cask
-  installs, and a previous public build can update to the new one via Sparkle. Anything short of that is not a finished release.
+```bash
+./Scripts/package_app.sh
+codesign --verify --deep --strict --verbose=2 CodexBar.app
+```
 
-## Troubleshooting
-- **White plate icon**: regenerate icns via `build_icon.sh` (ictool) to ensure transparent padding.
-- **Notarization invalid**: verify deep+timestamp signing, especially Sparkle’s Autoupdate/Updater and XPCs; rerun package + sign-and-notarize.
-- **App won’t launch**: ensure Sparkle.framework is embedded under `Contents/Frameworks` and rpath added; codesign deep.
-- **App “damaged” dialog after unzip**: re-extract with `ditto -x -k`, removing any `._*` files, then re-verify with `spctl`.
-- **Update download fails (404)**: ensure the release asset referenced in appcast exists and is published in the corresponding GitHub release; verify with `curl -I <enclosure-url>`.
+For a UI/runtime development loop, use:
+
+```bash
+./Scripts/compile_and_run.sh
+```
+
+The script packages and launches the repo-local bundle. It does not update `/Applications/CodexBar.app`.
+
+## Install a validated local build
+
+Replacing `/Applications/CodexBar.app` changes the app used by Login Items and must be in the approved task scope.
+Keep a recoverable copy of the existing app before replacement.
+
+After an approved install, verify:
+
+```bash
+defaults read /Applications/CodexBar.app/Contents/Info.plist CFBundleShortVersionString
+defaults read /Applications/CodexBar.app/Contents/Info.plist CFBundleVersion
+codesign --verify --deep --strict --verbose=2 /Applications/CodexBar.app
+pgrep -fl '/Applications/CodexBar.app/Contents/MacOS/CodexBar'
+```
+
+When login-at-startup or widgets are in scope, also verify the login item points at `/Applications/CodexBar.app` and
+that the app-group `widget-snapshot.json` refreshes after launch. Use `/usr/bin/log` for runtime log queries to avoid a
+zsh `log` function collision.
+
+## Official upstream release path
+
+The repository retains upstream packaging, signing, notarization, Sparkle, and appcast scripts because the source is
+based on the official project. They are only for an authorized official-upstream release context.
+
+Main entry points:
+
+- `Scripts/sign-and-notarize.sh`: universal build, Developer ID signing, notarization, staple, and zip.
+- `Scripts/make_appcast.sh`: Sparkle signature and appcast entry.
+- `Scripts/release.sh`: end-to-end external release orchestration.
+- `Scripts/mac-release`: resolves the shared release helper.
+
+The official flow requires Xcode 26+, SwiftFormat, SwiftLint, Swift, Sparkle tools, `gh`, Python, zip/curl, the official
+Developer ID certificate, App Store Connect credentials, and the matching Sparkle private key.
+
+The CodexBar Sparkle public key is the legacy AGCY key configured in `.mac-release.env`. Do not substitute
+`sparkle-private-key-KEEP-SECURE.txt`; that file belongs to another app and does not match CodexBar's public key.
+
+For an authorized official release, the definition of done remains:
+
+- Version and changelog are finalized and sequential.
+- `make test`, `make check`, and release prechecks pass.
+- Universal app and dSYM archives are signed, notarized, stapled, and uploaded.
+- Appcast signature, size, notes, and enclosure URL are verified.
+- The enclosure responds successfully after publication.
+- GitHub release assets and any required CLI assets are complete.
+- Homebrew/Appcast update behavior is proved from a previous signed build.
+
+The current fork cannot satisfy that definition without restoring and reviewing its publication configuration and
+external workflows.
+
+## Enabling a future fork release
+
+Before any fork publication:
+
+1. Choose the fork's bundle ID, signing team, release repository, feed URL, download prefix, Sparkle key pair, and
+   Homebrew policy.
+2. Update `.mac-release.env` without reusing the official private credentials.
+3. Decide whether fork releases should update the official bundle in place or install as a separate app.
+4. Restore only the required workflows and review their permissions.
+5. Test the complete release flow against a non-production prerelease.
+6. Document rollback, key custody, and asset verification.
+
+Do not infer these choices from the current upstream values.

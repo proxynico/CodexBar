@@ -2,6 +2,12 @@
 
 > Every AI coding limit, in your menu bar.
 
+> [!NOTE]
+> This checkout is Nico's `proxynico/CodexBar` fork. `main` is based on upstream 0.45.0/build 107 at
+> `2ccb4525687c92ff1cd50c8c57f24420c1fcb71f`, with the retained fork behavior documented in
+> [Fork Quick Start](docs/FORK_QUICK_START.md). The release badges and public download links below refer to the
+> official `steipete/CodexBar` project, not a fork release.
+
 [![Latest release](https://img.shields.io/github/v/release/steipete/CodexBar?style=flat-square&color=0a0a0c)](https://github.com/steipete/CodexBar/releases/latest)
 [![macOS 14+](https://img.shields.io/badge/macOS-14%2B-0a0a0c?style=flat-square)](https://github.com/steipete/CodexBar/releases/latest)
 [![Homebrew](https://img.shields.io/badge/brew-steipete%2Ftap%2Fcodexbar-orange?style=flat-square)](https://github.com/steipete/homebrew-tap)
@@ -160,6 +166,17 @@ show an incident indicator.
 - Optional session quota notifications and weekly-reset confetti.
 - Privacy-first: on-device parsing by default; browser cookies are opt-in and reused (no passwords stored).
 
+### Fork-specific behavior
+
+- Codex cards stay compact: additional Codex quota rows, credit balances, and buy-credit actions are hidden.
+- Claude hides the low-value routines row and treats an exhausted extra-usage cap as the blocking primary window.
+- Claude Auto mode tries OAuth, then a plausible web session, then CLI. Ordinary web failures can fall through to
+  CLI; cancellation remains terminal. CLI enrichment reuses only an already available manual web session.
+- Passive Keychain reads are non-interactive. Temporarily locked Keychain data is treated as unavailable and retried
+  instead of being cleared, and unchanged cookie-cache refreshes do not rewrite the Keychain item.
+- Status-item observation uses the same value buckets as icon rendering, avoiding work when the visible icon cannot
+  change.
+
 ## Privacy note
 Wondering if CodexBar scans your disk? It doesn’t crawl your filesystem; it reads a small set of known locations (browser cookies/local storage, provider config files, local JSONL logs) when the related features are enabled. Plain Adaptive refresh never inspects local agent activity. The separate Adaptive (agent-aware) option asks before inspecting the running-process list (including command lines) to identify Codex/Claude and reading bounded known-session metadata. Declining returns to plain Adaptive. When allowed with Agent Sessions hidden, CodexBar retains only the latest activity time and discards session paths and identities. Provider tokens and token-account settings live in the CodexBar config file with restrictive file permissions. See the discussion and audit notes in [issue #12](https://github.com/steipete/CodexBar/issues/12).
 
@@ -179,7 +196,7 @@ Wondering if CodexBar scans your disk? It doesn’t crawl your filesystem; it re
     - Find the browser’s “Safe Storage” key (e.g., “Chrome Safe Storage”, “Brave Safe Storage”, “Microsoft Edge Safe Storage”).
     - Open the item → **Access Control** → add `CodexBar.app` under “Always allow access by these applications”.
     - This removes the prompt when CodexBar decrypts cookies for that browser.
-  - **Last resort — stop all Keychain reads entirely**: if "Always Allow" doesn't stick (e.g., macOS resets the ACL after a Chromium update or a `partition_id` reset), open **CodexBar → Settings → Advanced → Keychain access** and enable **Disable Keychain access**. CodexBar will no longer touch the Keychain. Browser-cookie-based providers will be skipped, but Claude/Codex OAuth via the CLI still works (it reads `~/.codex` / `~/.claude` config files, not the Keychain).
+  - **Last resort — stop CodexBar Keychain access entirely**: if "Always Allow" doesn't stick (e.g., macOS resets the ACL after a Chromium update or a `partition_id` reset), open **CodexBar → Settings → Advanced → Keychain access** and enable **Disable Keychain access**. CodexBar will no longer make its own Keychain reads or writes, and browser-cookie-based providers will be skipped. Provider CLIs keep their own credential behavior: Codex normally reads its auth file, while Claude Code may use `~/.claude` files or its `Claude Code-credentials` Keychain item.
   - **Prompt after uninstall?** Deleting the app prevents a new launch from that bundle, but an already-running CodexBar process can keep requesting Keychain access until it quits. Check for that process, a Login Item, another installed copy, or a prompt that names a different requesting binary/path. See [Keychain prompt troubleshooting](docs/keychain-prompts.md) for safe checks and what to include in a support report without sharing secrets.
 - **Files & Folders prompts (folder/volume access)**: CodexBar launches provider CLIs and local probes for some providers. If those helpers read a project directory or external drive, macOS may ask CodexBar for that folder/volume (e.g., Desktop or an external volume). This is driven by the helper’s working directory, not background disk scanning.
 - **What we do not request in the background**: no Screen Recording or Accessibility permissions; user-triggered helper actions may ask macOS for Automation permission to open Terminal. No passwords are stored (browser cookies are reused when you opt in).
@@ -219,9 +236,10 @@ open CodexBar.app
 
 Dev loop:
 ```bash
-./Scripts/compile_and_run.sh
-./Scripts/compile_and_run.sh --test  # also run the sharded test suite before packaging/relaunching
-make check                           # SwiftFormat + SwiftLint
+swift test --filter ClaudeSourcePlannerTests  # replace with an existing focused suite
+make test                            # required full sharded suite before handoff
+make check                           # required SwiftFormat + SwiftLint after code changes
+./Scripts/compile_and_run.sh         # only when app-bundle/UI/runtime validation is needed
 make docs-list                       # list docs with frontmatter summaries
 ```
 

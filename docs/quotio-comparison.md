@@ -8,6 +8,10 @@ read_when:
 
 # Quotio Comparison & Enhancement Opportunities
 
+> [!NOTE]
+> Historical snapshot from 2026-01-04. It is not the current fork roadmap and should not be used without rechecking
+> both projects. Current fork priorities are in [FORK_ROADMAP.md](FORK_ROADMAP.md).
+
 **Date:** 2026-01-04  
 **Source:** https://github.com/nguyenphutrong/quotio
 
@@ -183,4 +187,3 @@ Quotio is a similar macOS menu bar app for AI quota tracking with **2k stars** a
 **Skip:**
 - Proxy server layer (out of scope)
 - Agent configuration (requires proxy)
-

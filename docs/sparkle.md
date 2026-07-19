@@ -8,6 +8,11 @@ read_when:
 
 # Sparkle integration
 
+> [!WARNING]
+> This is an authorized official-upstream release reference. Nico's fork keeps the official feed and key metadata but
+> is not configured to publish releases. Do not run signing, appcast, tag, or upload steps from normal fork work; see
+> [RELEASING.md](RELEASING.md).
+
 - Framework: Sparkle 2.8.1 via SwiftPM.
 - Updater: `SPUStandardUpdaterController` owned by `AppDelegate` (see `Sources/CodexBar/CodexbarApp.swift:1`).
 - Feed: `SUFeedURL` in Info.plist points to GitHub Releases appcast (`appcast.xml`).
@@ -16,7 +21,7 @@ read_when:
 - LSUIElement: works; updater window will show when checking. App is non-sandboxed.
 - Channels: stable vs beta are served from the same appcast. Beta items are tagged with `sparkle:channel="beta"`; About → Update Channel controls `allowedChannels`.
 
-## Release flow
+## Authorized official-upstream release flow
 1) Build & notarize as usual (`./Scripts/sign-and-notarize.sh`), producing notarized `CodexBar-macos-universal-<ver>.zip`.
 2) Generate appcast entry with Sparkle `generate_appcast` using the Ed25519 private key; HTML release notes come from `CHANGELOG.md` via `Scripts/changelog-to-html.sh`. For beta releases: set `SPARKLE_CHANNEL=beta` to tag the entry.
 3) Upload `appcast.xml` + zip to GitHub Releases (feed URL stays stable).

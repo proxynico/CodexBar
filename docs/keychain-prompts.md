@@ -16,6 +16,14 @@ CodexBar does not need your browser password. macOS owns the prompt, and the pro
 that is requesting access. For support reports, include that requesting app/path when possible and do not paste
 passwords, cookie headers, OAuth tokens, API keys, or Keychain item values.
 
+Routine passive reads use a no-UI Security.framework query. If the Keychain is locked or macOS requires approval,
+CodexBar treats the data as temporarily unavailable rather than forcing a background prompt. Prompt-capable access is
+limited to explicit user actions and still respects the provider prompt policy and global **Disable Keychain access**
+setting.
+
+The fork also avoids rewriting an unchanged browser-cookie cache entry. This keeps its original timestamp and reduces
+Keychain authorization churn without weakening refresh validation.
+
 Before a Keychain read that may require interaction, CodexBar shows an explanation of the item and its purpose.
 **Learn More** opens this page without dismissing that explanation or starting the macOS prompt. Choose **OK** only
 when you are ready to continue, or use the opt-out below.
@@ -69,6 +77,21 @@ If CodexBar is still installed and you want it to stop all Keychain access:
 This disables Keychain reads and writes from CodexBar. Browser-cookie-based providers will be skipped because
 CodexBar can no longer decrypt browser cookies. Manual cookie headers, API keys, and CLI/OAuth flows that do not rely
 on Keychain can still work where the provider supports them.
+
+## Development and test safety
+
+Routine validation must use fixtures, stubs, test stores, and no-UI query helpers. Do not run live provider probes,
+browser-cookie imports, `codexbar usage` against a real account, or direct `SecItem` experiments unless that live
+behavior was explicitly requested.
+
+If a test or diagnostic unexpectedly displays a prompt, stop it and record the requesting binary and item name. The
+prompt is evidence that the validation path crossed a live credential boundary.
+
+For logs, call the system binary explicitly because zsh configurations can define a conflicting `log` function:
+
+```bash
+/usr/bin/log show --predicate 'subsystem == "com.steipete.codexbar"' --last 10m
+```
 
 ## Browser Safe Storage prompts
 

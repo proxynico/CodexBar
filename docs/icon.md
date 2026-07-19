@@ -35,3 +35,9 @@ Why this approach:
 Notes:
 - If Xcode is in a nonstandard location, set `XCODE_APP=/path/to/Xcode.app` before running.
 - Script is CI-friendly; no Xcode project needed.
+
+## Runtime icon observation
+
+The fork buckets status-item observation signatures at the same granularity as `IconRenderer`'s percent and credit
+render caches. A raw usage value that stays inside the current rendered bucket does not trigger an icon observation
+change or redraw. Tests should compare these shared bucket helpers instead of duplicating quantization math.

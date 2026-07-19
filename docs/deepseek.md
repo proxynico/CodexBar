@@ -15,7 +15,7 @@ endpoints.
 
 ## Data sources
 
-1. **Optional API key** supplied via `DEEPSEEK_API_KEY` / `DEEPSEEK_KEY`, or selected from DeepSeek token accounts in `~/.codexbar/config.json`.
+1. **Optional API key** supplied via `DEEPSEEK_API_KEY` / `DEEPSEEK_KEY`, or selected from DeepSeek token accounts in the [resolved config file](configuration.md).
 2. **API-key balance endpoint**
    - `GET https://api.deepseek.com/user/balance`
    - Request headers: `Authorization: Bearer <api key>`, `Accept: application/json`

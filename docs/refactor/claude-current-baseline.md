@@ -1,155 +1,103 @@
 ---
-summary: "Current Claude behavior baseline before vNext refactor work."
+summary: "Current Claude runtime, source planning, Keychain, token-account, and enrichment behavior."
 read_when:
-  - Planning Claude refactor tickets
   - Changing Claude runtime/source selection
   - Changing Claude OAuth prompt or cooldown behavior
   - Changing Claude token-account routing
+  - Reviewing Claude web enrichment
 ---
 
 # Claude current baseline
 
-This document is the current-state parity reference for Claude behavior in CodexBar.
+Current code and characterization tests are authoritative. This file is the human-readable parity contract for the
+active implementation.
 
-Use it when later tickets need to preserve or intentionally change Claude behavior. When the refactor plan,
-summary docs, and running code disagree, treat current code plus characterization coverage as authoritative, and use
-this document as the human-readable summary of that current state.
+## Behavior owners
 
-## Scope of this baseline
+- `ClaudeSourcePlanner.swift` owns ordered source selection and plausible-availability diagnostics.
+- `ClaudeProviderDescriptor.swift` converts the plan into the generic provider pipeline and controls strategy
+  fallback.
+- `ClaudeUsageFetcher.swift` executes planned steps, maps snapshots, applies cost/model enrichment, and promotes an
+  exhausted spend cap.
+- `ClaudeOAuth/*` owns credential loading, refresh ownership, prompt policy, and cooldown behavior.
+- `ClaudeSettingsStore.swift` and `TokenAccountCLI.swift` route app and CLI token-account inputs.
 
-This baseline captures the current behavior surface that later refactor work must preserve unless a future ticket
-changes it intentionally:
+## Runtime and source selection
 
-- runtime/source-mode selection,
-- prompt and cooldown behavior that affects Claude OAuth repair flows,
-- token-account routing at the app and CLI edges,
-- provider siloing and web-enrichment rules,
-- the current relationship between the public Claude doc and the vNext refactor plan.
-
-## Active behavior owners
-
-Current Claude behavior is defined by several active owners, not one central planner:
-
-- `Sources/CodexBarCore/Providers/Claude/ClaudeProviderDescriptor.swift`
-  owns the main provider-pipeline strategy order and fallback rules.
-- `Sources/CodexBarCore/Providers/Claude/ClaudeUsageFetcher.swift`
-  still owns a separate direct `.auto` path, delegated refresh, prompt/cooldown handling, and web-extra enrichment.
-- `Sources/CodexBar/Providers/Claude/ClaudeSettingsStore.swift`
-  owns app-side token-account routing into cookie or OAuth behavior.
-- `Sources/CodexBarCLI/TokenAccountCLI.swift`
-  owns CLI-side token-account routing and effective source-mode overrides.
-- `Sources/CodexBarCore/TokenAccountSupport.swift`
-  owns the current string heuristics that distinguish Claude OAuth access tokens from cookie/session-key inputs.
-
-## Current runtime and source-mode behavior
-
-### Main provider pipeline
-
-The generic provider pipeline currently resolves Claude strategies in this order:
-
-| Runtime | Selected mode | Ordered strategies | Fallback behavior |
+| Runtime | Selected mode | Ordered attempts | Fallback |
 | --- | --- | --- | --- |
-| app | auto | `oauth -> cli -> web` | OAuth can fall through to CLI/Web. CLI can fall through to Web only when Web is available. Web is terminal. |
-| app | oauth | `oauth` | No fallback. |
-| app | cli | `cli` | No fallback. |
-| app | web | `web` | No fallback. |
-| cli | auto | `web -> cli` | Web can fall through to CLI. CLI is terminal. |
-| cli | oauth | `oauth` | No fallback. |
-| cli | cli | `cli` | No fallback. |
-| cli | web | `web` | No fallback. |
+| app | auto | `oauth -> web -> cli` | OAuth and ordinary web errors may continue; cancellation is terminal; CLI is final. |
+| app | oauth | `oauth` | None. |
+| app | web | `web` | None. |
+| app | cli | `cli` | None. |
+| cli | auto | `web -> cli` | Web may continue to CLI; CLI is final. |
+| cli | oauth | `oauth` | None. |
+| cli | web | `web` | None. |
+| cli | cli | `cli` | None. |
 
-This behavior is owned by `Sources/CodexBarCore/Providers/Claude/ClaudeProviderDescriptor.swift`
-through `ProviderFetchPlan` and `ProviderFetchPipeline`.
+Explicit modes execute their selected strategy even when the planner's availability probe cannot prove that source is
+available. Auto records every planned step for diagnostics and lets each strategy decide actual availability.
 
-### Other active `.auto` decision sites
+App Auto separates two web concepts:
 
-The codebase still contains multiple active `.auto` decision sites:
+- A **plausible web session** can include the web step without importing cookies during planning.
+- A **reusable web session** allows CLI result enrichment. In Auto mode this is limited to an already configured
+  manual session, so reaching CLI does not trigger browser-cookie discovery merely to add model limits.
 
-| Owner | Current behavior |
-| --- | --- |
-| `ClaudeProviderDescriptor.resolveUsageStrategy(...)` | Chooses `oauth`, then `cli`, then `web`, with final `cli` fallback when none are available. |
-| `ClaudeUsageFetcher.loadLatestUsage(.auto)` | Chooses `oauth`, then `web`, then `cli`, with final `oauth` fallback. |
+## Prompt and cooldown behavior
 
-This inconsistency is intentional to record here. RAT-107 directly characterizes the active direct-fetcher branches it
-can reach cleanly in tests and records the remaining current-state behavior without reconciling it.
+- Default Claude Keychain prompt mode is `onlyOnUserAction`.
+- Passive availability, background refresh, and cache reads use non-interactive Security.framework queries.
+- `never` blocks prompt-capable delegated refresh.
+- `onlyOnUserAction` reserves interactive repair for an explicit user action, except the narrowly defined startup
+  bootstrap path retained by upstream 0.45.
+- User interaction can clear a prior denial cooldown before a requested retry.
+- Background delegated refresh is blocked when the active prompt policy does not allow it.
+- Claude CLI-owned expired credentials use delegated refresh; CodexBar-owned credentials use direct refresh;
+  environment-owned credentials do not auto-refresh.
 
-## Prompt and cooldown baseline
+Task-local prompt and Security CLI overrides must propagate into detached delegated-refresh work in tests. Tests must
+never depend on the machine's stored prompt preference or real Keychain.
 
-Current behavior that later refactor work must preserve:
+## Token-account routing
 
-- The default Claude keychain prompt mode is `onlyOnUserAction`.
-- Prompt policy is only applicable when the Claude OAuth read strategy is `securityFramework`.
-- User-initiated interaction clears a prior Claude keychain cooldown denial before retrying availability or repair.
-- Startup bootstrap prompting is allowed only when all of these are true:
-  - runtime is app,
-  - interaction is background,
-  - refresh phase is startup,
-  - prompt mode is `onlyOnUserAction`,
-  - no cached Claude credentials exist.
-- Background delegated refresh is blocked when prompt policy is `onlyOnUserAction` and the caller did not explicitly
-  allow background delegated refresh.
-- Prompt mode `never` blocks delegated refresh attempts.
-- Expired credential owner behavior remains owner-specific:
-  - `.claudeCLI`: delegated refresh path,
-  - `.codexbar`: direct refresh path,
-  - `.environment`: no auto-refresh.
+Accepted inputs:
 
-## Token-account routing baseline
+- OAuth access token with `sk-ant-oat...`, with or without `Bearer`.
+- Raw `sessionKey` value.
+- Full Cookie header.
 
-Accepted Claude token-account input shapes today:
+OAuth-shaped values route to OAuth and are never treated as cookies. Session-key and Cookie values route to manual
+web mode. CLI token-account OAuth input changes effective Auto source to OAuth and injects
+`CODEXBAR_CLAUDE_OAUTH_TOKEN`; cookie-shaped input stays manual-web scoped.
 
-- raw OAuth access token with `sk-ant-oat...` prefix,
-- `Bearer sk-ant-oat...` input,
-- raw session key,
-- full cookie header.
+## Web fallback and enrichment
 
-Current routing rules:
-
-- OAuth-token-shaped inputs are not treated as cookies.
-- Cookie/header-shaped inputs are any value that already contains `Cookie:` or `=`.
-- App-side Claude snapshot behavior:
-  - OAuth token account keeps the usage source setting as-is, disables cookie mode (`.off`), clears the manual cookie
-    header, and relies on environment-token injection.
-  - Session-key or cookie-header account keeps the usage source setting as-is, forces manual cookie mode, and
-    normalizes raw session keys into `sessionKey=<value>`.
-- CLI-side Claude token-account behavior:
-  - OAuth token account changes the effective source mode from `auto` to `oauth`, disables cookie mode, omits a
-    manual cookie header, and injects `CODEXBAR_CLAUDE_OAUTH_TOKEN`.
-  - Session-key or cookie-header account stays in cookie/manual mode.
-
-## Siloing and web-enrichment baseline
-
-Claude Web enrichment is cost-only when the primary source is OAuth or CLI:
-
-- Web extras may populate `providerCost` when it is missing.
-- Web extras must not replace `accountEmail`, `accountOrganization`, or `loginMethod` from the primary source.
-- Snapshot identity remains provider-scoped to Claude.
-
-This behavior is implemented in `Sources/CodexBarCore/Providers/Claude/ClaudeUsageFetcher.swift`
-inside `applyWebExtrasIfNeeded`.
-
-## Documentation contract
-
-- [docs/claude.md](../claude.md) is the summary doc for contributors who want an overview.
-- This file is the exact current-state baseline for contributor and refactor parity work.
-- [claude-provider-vnext-locked.md](claude-provider-vnext-locked.md)
-  is the future refactor plan and should cite this file for present behavior.
+- Normal web fetch errors in Auto mode may reach CLI in app and CLI runtimes.
+- Cancellation never falls through.
+- Web enrichment must not replace primary `accountEmail`, `accountOrganization`, or `loginMethod`.
+- An existing manual web session can add model-scoped windows that the CLI does not expose.
+- The Claude routines row remains in snapshot data but is hidden from this fork's menu card.
+- If extra-usage spend is at or above its cap, the spend-limit window becomes primary and blocking for OAuth, web,
+  and enriched CLI results.
 
 ## Characterization coverage
 
-Stable automated coverage for this baseline lives in:
+The main contract is covered by:
 
-- `Tests/CodexBarTests/ClaudeBaselineCharacterizationTests.swift`
-- `Tests/CodexBarTests/ClaudeOAuthFetchStrategyAvailabilityTests.swift`
-- `Tests/CodexBarTests/ClaudeUsageTests.swift`
-- `Tests/CodexBarTests/TokenAccountEnvironmentPrecedenceTests.swift`
-- `Tests/CodexBarTests/SettingsStoreCoverageTests.swift`
+- `ClaudeBaselineCharacterizationTests.swift`
+- `ClaudeSourcePlannerTests.swift`
+- `ClaudeUsageTests.swift`
+- `ClaudeWebFetchDeadlineTests.swift`
+- `ClaudeOAuthDelegatedRefreshRecoveryTests.swift`
+- `ClaudeOAuthCredentialsStoreTests.swift`
+- `CLIWebFallbackTests.swift`
 
-`ClaudeUsageTests.swift` now directly characterizes the reachable `ClaudeUsageFetcher(.auto)` branches for:
+All tests must use stubs, isolated credential files, task overrides, and test Keychain stores.
 
-- OAuth when OAuth, Web, and CLI all appear available,
-- Web before CLI when OAuth is unavailable,
+## Related docs
 
-The successful CLI-selected branch and the CLI-failure-to-OAuth fallback remain documented from code inspection plus
-surrounding Claude probe/regression coverage, because the current CLI-availability decision is sourced from process-wide
-binary discovery with no stable test seam that would keep RAT-107 in scope.
+- [Claude provider](../claude.md)
+- [Keychain current state](../KEYCHAIN_FIX.md)
+- [0.45 integration design](../superpowers/specs/2026-07-18-upstream-0.45-fork-integration-design.md)
+- [Claude provider vNext historical plan](claude-provider-vnext-locked.md)

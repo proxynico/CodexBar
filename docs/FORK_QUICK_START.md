@@ -1,257 +1,98 @@
 ---
-summary: "Fork quick start: differences, commands, and planned features."
+summary: "Nico fork quick start: retained behavior, safe checks, and current Git workflow."
 read_when:
-  - Onboarding to the fork workflow
-  - Reviewing fork-specific changes
-  - Running fork maintenance commands
+  - Onboarding to Nico's CodexBar fork
+  - Reviewing fork-specific behavior
+  - Choosing build and test commands
 ---
 
-# CodexBar Fork - Quick Start Guide
+# Nico fork quick start
 
-**Fork Maintainer:** Brandon Charleson ([topoffunnel.com](https://topoffunnel.com))  
-**Original Author:** Peter Steinberger ([steipete](https://twitter.com/steipete))  
-**Fork Repository:** https://github.com/topoffunnel/CodexBar
+This checkout is the [`proxynico/CodexBar`](https://github.com/proxynico/CodexBar) fork. The public upstream is
+[`steipete/CodexBar`](https://github.com/steipete/CodexBar).
 
----
+## Current baseline
 
-## 🎯 What Makes This Fork Different?
+- Fork branch: `main`, tracking `fork/main`.
+- Upstream base: 0.45.0/build 107 at `2ccb4525687c92ff1cd50c8c57f24420c1fcb71f`.
+- Validated integration head: `bfaaa1bbc85e47da020f435b9b5f9e319d529f2d`.
+- Pre-integration safety branch: `codex/pre-upstream-0.45-safety-20260718` at
+  `9bbef21c877122f3e291128928781e3f3104eff0`.
+- Installed runtime target: `/Applications/CodexBar.app`.
 
-### Key Enhancements
-1. **Augment Provider Support** - Full integration with Augment Code API
-2. **Enhanced Security** - Improved keychain handling, no permission prompts
-3. **Better Cookie Management** - Automatic session keepalive, Chrome Beta support
-4. **Bug Fixes** - Cursor bonus credits, cookie domain filtering
+Use Git and the installed app as live truth. These commit IDs are the 0.45 integration record, not a promise that the
+fork will stay at those commits.
 
-### Planned Features
-- Multi-account management per provider
-- Enhanced diagnostics and logging
-- Upstream sync automation
-- Usage history tracking
+## Retained fork behavior
 
----
+- Codex cards hide additional quota rows, credit balances, and buy-credit actions.
+- Claude hides only the routines row. Other model-specific limits remain visible.
+- An exhausted Claude extra-usage cap becomes the primary blocking window.
+- Claude Auto mode uses OAuth, web, then CLI. Normal web failures may fall through to CLI; cancellation does not.
+- CLI enrichment reuses an existing manual Claude web session and does not start browser-cookie discovery merely to
+  add extras.
+- Passive Security.framework reads are non-interactive. Keychain UI denial is treated as unavailable data.
+- Unchanged cookie-cache refreshes retain the stored entry and avoid a Keychain write.
+- Deprecated trusted-application ACL attachment is not used for cache writes.
+- Status-item observation changes only at the same value buckets that can change the rendered icon.
+- Kimi K2 and CrossModel stay removed, matching upstream 0.45.
+- Fork GitHub CI/release/upstream-monitor workflows and bundled release agent skills stay absent.
 
-## 🚀 Quick Commands
+## Development commands
 
-### Development
+Use the narrowest check that proves the change:
+
 ```bash
-# Build and run (kills old instances, builds, tests, packages, relaunches)
-./Scripts/compile_and_run.sh
-
-# Quick build
-swift build
-
-# Run tests
+swift test --filter ClaudeSourcePlannerTests
 make test
-
-# Format code
-swiftformat Sources Tests
-swiftlint --strict
-
-# Package app
-./Scripts/package_app.sh
-
-# Restart app after rebuild
-pkill -x CodexBar || pkill -f CodexBar.app || true
-cd /Users/steipete/Projects/codexbar && open -n /Users/steipete/Projects/codexbar/CodexBar.app
+make check
 ```
 
-### Release
+`make test` is the required full sharded test gate before handoff. Run `make check` after code changes. These tests use
+stubs and test stores; do not replace them with live provider probes or real Keychain reads.
+
+Build the bundle only when UI or runtime behavior needs it:
+
 ```bash
-# Edit .mac-release.env first: MAC_RELEASE_REPO, feed URL, download URL,
-# bundle id, and Sparkle public/signing key must point at your fork.
-./Scripts/release.sh
-
-# See full release process
-cat docs/RELEASING.md
-```
-
-### Git Workflow
-```bash
-# Check status
-git status
-
-# Create feature branch
-git checkout -b feature/my-feature
-
-# Commit changes
-git add -A
-git commit -m "feat: description"
-
-# Push to fork
-git push origin feature/my-feature
-
-# Sync with upstream (TBD - see docs/FORK_ROADMAP.md Phase 4)
-```
-
----
-
-## 📁 Key Files & Directories
-
-### Source Code
-- `Sources/CodexBar/` - Swift 6 menu bar app
-- `Sources/CodexBarCore/` - Core logic, providers, utilities
-- `Sources/CodexBarCore/Providers/Augment/` - Augment provider implementation
-- `Tests/CodexBarTests/` - XCTest coverage
-
-### Scripts
-- `Scripts/compile_and_run.sh` - Main development script
-- `Scripts/package_app.sh` - Package app bundle
-- `Scripts/sign-and-notarize.sh` - Release signing
-- `Scripts/make_appcast.sh` - Generate appcast XML
-
-### Documentation
-- `docs/augment.md` - Augment provider guide
-- `docs/FORK_ROADMAP.md` - Development roadmap
-- `docs/RELEASING.md` - Release process
-- `docs/DEVELOPMENT.md` - Build instructions
-- `README.md` - Main documentation
-
----
-
-## 🔧 Common Tasks
-
-### Adding a New Feature
-1. Create feature branch: `git checkout -b feature/my-feature`
-2. Make changes in `Sources/`
-3. Add tests in `Tests/`
-4. Run `./Scripts/compile_and_run.sh` to verify
-5. Run `swiftformat Sources Tests && swiftlint --strict`
-6. Commit with descriptive message
-7. Push and create PR
-
-### Debugging Augment Issues
-1. Enable debug logging: `export CODEXBAR_LOG_LEVEL=debug`
-2. Check Console.app for "com.steipete.codexbar"
-3. Use Settings → Debug → Augment → Show Debug Info
-4. Check `docs/augment.md` troubleshooting section
-
-### Testing Changes
-```bash
-# Run all tests
-make test
-
-# Run specific test
-swift test --filter AugmentTests
-
-# Build and test together
-./Scripts/compile_and_run.sh --test
-```
-
-### Updating Documentation
-1. Edit relevant `.md` file in `docs/`
-2. Update `README.md` if needed
-3. Commit with `docs:` prefix
-4. No need to rebuild app
-
----
-
-## 🐛 Troubleshooting
-
-### App Won't Launch
-```bash
-# Kill all instances
-pkill -x CodexBar || pkill -f CodexBar.app || true
-
-# Rebuild and relaunch
 ./Scripts/compile_and_run.sh
 ```
 
-### Build Errors
-```bash
-# Clean build
-swift package clean
-swift build
+That script kills old instances, builds, packages, signs, relaunches the repo-local `CodexBar.app`, and checks that it
+stays running. Add `--test` only when a bundle-level validation also needs the full suite.
 
-# Check for format issues
-swiftformat Sources Tests --lint
-swiftlint --strict
+To relaunch an already packaged repo-local bundle:
+
+```bash
+pkill -x CodexBar || pkill -f CodexBar.app || true
+cd /Users/nicolasmontero/Developer/tools/codexbar
+open -n /Users/nicolasmontero/Developer/tools/codexbar/CodexBar.app
 ```
 
-### Cookie Issues (Augment)
-1. Check browser is logged into app.augmentcode.com
-2. Verify cookie source in Settings → Providers → Augment
-3. Try manual cookie import (see `docs/augment.md`)
-4. Check debug logs for cookie import details
+Do not treat the repo-local bundle as proof of the installed app. Verify `/Applications/CodexBar.app` separately when
+installation or login-at-startup behavior is in scope.
 
-### Keychain Permission Prompts
-- This fork includes fixes to eliminate prompts
-- If you still see prompts, check `Sources/CodexBarCore/Keychain/`
-- Ensure you're running the latest build
+## Git workflow
 
----
+The canonical remotes in Nico's checkout are:
 
-## 📚 Learning Resources
+```text
+origin  https://github.com/steipete/CodexBar.git
+fork    https://github.com/proxynico/CodexBar.git
+```
 
-### Understanding the Codebase
-1. Start with `Sources/CodexBar/CodexbarApp.swift` - App entry point
-2. Review `Sources/CodexBarCore/UsageStore.swift` - Main state management
-3. Check `Sources/CodexBarCore/Providers/` - Provider implementations
-4. Read `docs/provider.md` - Provider authoring guide
+Create work on a `codex/` branch and push it to `fork`. Do not push to `origin` unless Nico explicitly asks to publish
+an upstream contribution.
 
-### Swift 6 & SwiftUI
-- Uses `@Observable` macro (not `ObservableObject`)
-- Prefer `@State` ownership over `@StateObject`
-- Use `@Bindable` in views for two-way binding
-- Strict concurrency checking enabled
+For an upstream refresh, use the clean-base port strategy in [Upstream Strategy](UPSTREAM_STRATEGY.md). Do not assume
+a large upstream move is a safe merge or rebase.
 
-### Coding Style
-- 4-space indentation
-- 120-character line limit
-- Explicit `self` is intentional (don't remove)
-- Follow existing `MARK` organization
-- Use descriptive variable names
+## Key docs
 
----
-
-## 🤝 Contributing
-
-### To This Fork
-1. Fork the fork repository
-2. Create feature branch
-3. Make changes with tests
-4. Submit PR to `topoffunnel/CodexBar`
-
-### To Upstream
-1. Check if feature benefits all users
-2. Create PR to `steipete/CodexBar`
-3. Reference this fork if relevant
-4. Be patient with review process
-
-See `docs/FORK_ROADMAP.md` for contribution strategy.
-
----
-
-## 📞 Support
-
-### Fork-Specific Issues
-- GitHub Issues: https://github.com/topoffunnel/CodexBar/issues
-- Email: [your-email]@topoffunnel.com
-
-### Upstream Issues
-- GitHub Issues: https://github.com/steipete/CodexBar/issues
-- Twitter: [@steipete](https://twitter.com/steipete)
-
----
-
-## 📋 Next Steps
-
-1. **Read the Roadmap:** `docs/FORK_ROADMAP.md`
-2. **Set Up Development:** `./Scripts/compile_and_run.sh`
-3. **Review Augment Docs:** `docs/augment.md`
-4. **Check Current Issues:** GitHub Issues tab
-5. **Join Development:** Pick a task from Phase 2-5
-
----
-
-## 🎉 Quick Wins
-
-Want to contribute but not sure where to start? Try these:
-
-- [ ] Add more test coverage for Augment provider
-- [ ] Improve error messages in cookie import
-- [ ] Add screenshots to `docs/augment.md`
-- [ ] Test on different macOS versions
-- [ ] Report bugs you find
-- [ ] Suggest UI improvements
-
-Happy coding! 🚀
+- [Development](DEVELOPMENT.md)
+- [Development setup and signing](DEVELOPMENT_SETUP.md)
+- [Fork setup](FORK_SETUP.md)
+- [Upstream strategy](UPSTREAM_STRATEGY.md)
+- [Keychain prompt troubleshooting](keychain-prompts.md)
+- [Current Keychain architecture](KEYCHAIN_FIX.md)
+- [Release policy](RELEASING.md)
+- [0.45 integration record](superpowers/specs/2026-07-18-upstream-0.45-fork-integration-design.md)
