@@ -309,22 +309,35 @@ struct CursorImportedSessionScanningTests {
     func `resolved session accepts live result when keychain access is disabled`() async throws {
         let probe = CursorStatusProbe(browserDetection: BrowserDetection(cacheTTL: 0))
         let session = Self.makeSessionInfo(sourceLabel: "Cursor.app local auth", cookieValue: "live")
+        let service = "cursor-login-keychain-disabled-\(UUID().uuidString)"
+        let legacyBase = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
 
-        let outcome = try await KeychainAccessGate.withTaskOverrideForTesting(true) {
-            let observation = CookieHeaderCache.observeForConditionalMutation(provider: .cursor)
-            return try await probe.resolveImportedSession(
-                session,
-                perform: { cookieHeader, _ in cookieHeader },
-                log: { _ in },
-                cacheObservation: observation)
-        }
+        try await KeychainAccessGate.withTaskOverrideForTesting(true) {
+            try await KeychainCacheStore.withServiceOverrideForTesting(service) {
+                try await CookieHeaderCache.withLegacyBaseURLOverrideForTesting(legacyBase) {
+                    KeychainCacheStore.setTestStoreForTesting(true)
+                    defer { KeychainCacheStore.setTestStoreForTesting(false) }
 
-        guard case let .succeeded(cookieHeader) = outcome else {
-            Issue.record("Expected the successful live Cursor result")
-            return
+                    let observation = CookieHeaderCache.observeForConditionalMutation(provider: .cursor)
+                    let cacheOperations = KeychainCacheStore.OperationRecorder()
+                    let outcome = try await KeychainCacheStore.withOperationRecorderForTesting(cacheOperations) {
+                        try await probe.resolveImportedSession(
+                            session,
+                            perform: { cookieHeader, _ in cookieHeader },
+                            log: { _ in },
+                            cacheObservation: observation)
+                    }
+
+                    guard case let .succeeded(cookieHeader) = outcome else {
+                        Issue.record("Expected the successful live Cursor result")
+                        return
+                    }
+                    #expect(cookieHeader == session.cookieHeader)
+                    #expect(cacheOperations.operations.isEmpty)
+                }
+            }
         }
-        #expect(cookieHeader == session.cookieHeader)
-        #expect(CookieHeaderCache.load(provider: .cursor) == nil)
     }
 
     @Test
