@@ -1315,6 +1315,10 @@ public struct CursorStatusProbe: Sendable {
         value: Value,
         context: ResolvedSessionReconciliationContext<Value>) async throws -> Value
     {
+        if KeychainAccessGate.isDisabled {
+            context.log("Keychain access disabled; accepting uncached Cursor result from \(context.sourceLabel)")
+            return value
+        }
         let stored = CookieHeaderCache.storeIfObservationCurrent(
             provider: .cursor,
             expected: context.cacheObservation,
