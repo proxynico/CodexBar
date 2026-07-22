@@ -10,7 +10,12 @@
 - Dev loop: `./Scripts/compile_and_run.sh` kills old instances, builds, packages, relaunches `CodexBar.app`, and confirms it stays running; add `--test` for the sharded full suite.
 - Quick build/test: `swift build` (debug) or `swift build -c release`; `make test` for the sharded full suite.
 - Package locally: `./Scripts/package_app.sh` to refresh `CodexBar.app`, then restart with `pkill -x CodexBar || pkill -f CodexBar.app || true; cd /Users/nicolasmontero/Developer/tools/codexbar && open -n /Users/nicolasmontero/Developer/tools/codexbar/CodexBar.app`.
-- Release flow is authorized-official-upstream only. This fork's `.mac-release.env` targets `steipete/CodexBar`; do not run `./Scripts/release.sh` for normal fork work. Use `./Scripts/package_app.sh` locally and read `docs/RELEASING.md` before any publication action.
+- This fork's `.mac-release.env` targets `steipete/CodexBar`, so never run `./Scripts/release.sh`. Use `./Scripts/package_app.sh` for local bundles.
+
+## Upstream Write Prohibition
+- Never write to `steipete/CodexBar` or any other upstream repository or remote from this checkout. This includes pushes, pull requests, issues, comments, reviews, releases, tags, uploads, and API mutations.
+- Upstream access is read-only. Fetching, pulling, and comparing upstream are allowed.
+- All publication from this repository must target `proxynico/CodexBar` through the `fork` remote. If an operation would write anywhere else, stop without executing it.
 
 ## Coding Style & Naming
 - Enforce SwiftFormat/SwiftLint: run `swiftformat Sources Tests` and `swiftlint --strict`. 4-space indent, 120-char lines, explicit `self` is intentional—do not remove.
@@ -38,8 +43,6 @@
 - For CLI-testable provider/parser/settings behavior, use CLI/focused tests instead of `Scripts/package_app.sh` or `./Scripts/compile_and_run.sh`.
 - Run `./Scripts/compile_and_run.sh` only when UI/runtime behavior needs bundle-level validation; it builds, packages, relaunches, and verifies the app stays running. Add `--test` when the bundle check also needs the sharded suite.
 - Widget/Tahoe UI issues: use Parallels macOS VM plus screenshots/clicks for autonomous verification.
-- Release script: keep it in the foreground; do not background it—wait until it finishes.
-- Sparkle release key: use `.mac-release.env` `MAC_RELEASE_SIGNING_KEY_FILE`, the legacy `AGCY8w5vHirVfGGDGc8Szc5iuOqupZSh9pMj/Qs67XI=` key. Do not use `sparkle-private-key-KEEP-SECURE.txt`; that is VibeTunnel's mismatched key.
 - Swift concurrency: treat sibling `async let` tasks as a review red flag when one child is required and another is optional/best-effort. Prefer sequential awaits or a drained `withThrowingTaskGroup` that surfaces required failures and explicitly contains optional failures; crash stacks mentioning `swift_task_dealloc` or `asyncLet_finish_after_task_completion` should trigger an audit of nearby `async let` usage.
 - Prefer modern SwiftUI/Observation macros: use `@Observable` models with `@State` ownership and `@Bindable` in views; avoid `ObservableObject`, `@ObservedObject`, and `@StateObject`.
 - Favor modern macOS 15+ APIs over legacy/deprecated counterparts when refactoring (Observation, new display link APIs, updated menu item styling, etc.).
